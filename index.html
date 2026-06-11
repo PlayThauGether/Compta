@@ -1093,11 +1093,19 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// Service Worker désactivé temporairement
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('/Compta/sw.js')
+//       .then(r => console.log('SW registered'))
+//       .catch(e => console.log('SW error', e));
+//   });
+// }
+
+// Désenregistre l'ancien SW s'il existe
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/Compta/sw.js')
-      .then(r => console.log('SW registered'))
-      .catch(e => console.log('SW error', e));
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => reg.unregister());
   });
 }
 </script>
@@ -1120,7 +1128,7 @@ const FIREBASE_CONFIG = {
   appId: "1:689941976484:web:fa7eb1708f56e809589d31"
 };
 
-const VERCEL_URL = 'compta-4rm375y6s-playthaugethers-projects.vercel.app'; // À mettre à jour après déploiement Vercel
+const VERCEL_URL = 'https://compta-fujw411ny-playthaugethers-projects.vercel.app'; // À mettre à jour après déploiement Vercel
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -1702,13 +1710,13 @@ window.openEditModal = (id) => {
     document.getElementById('op-don-origine').value = op.donOrigine || '';
   }
 
-  document.getElementById('modal-title').textContent = '✏️ Modifier l'opération';
+  document.getElementById('modal-title').textContent = "✏️ Modifier l'opération";
   document.getElementById('submit-btn').textContent = '💾 Enregistrer les modifications';
   document.getElementById('modal-op').classList.add('open');
 };
 
 window.deleteOperation = async (id) => {
-  if (!confirm('Supprimer cette opération ? Cette action est irréversible.')) return;
+  if (!confirm("Supprimer cette opération ? Cette action est irréversible.")) return;
   const op = allOps.find(o => o.id === id);
   await deleteDoc(doc(db, 'operations', id));
   await logAudit('delete_operation', `Suppression ${op?.type} ${op?.montant}€ — ${op?.description}`);

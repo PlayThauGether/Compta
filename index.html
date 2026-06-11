@@ -1849,6 +1849,13 @@ window.setType = (type) => {
     type === 'sortie' ? 'Nouvelle sortie' : 'Virement caisse → banque';
 };
 
+window.updateHATotal = () => {
+  const adhesions = parseFloat(document.getElementById('ha-adhesions').value) || 0;
+  const dons = parseFloat(document.getElementById('ha-dons').value) || 0;
+  const total = adhesions + dons;
+  document.getElementById('ha-total').textContent = new Intl.NumberFormat('fr-FR', {style:'currency',currency:'EUR'}).format(total);
+};
+
 // ── FILE ──
 window.handleFileSelect = (e) => {
   const files = Array.from(e.target.files);

@@ -506,7 +506,54 @@
   }
 
   .don-mode-btn.active-liquide { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+
+  .config-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text2);
+    margin: 4px;
+  }
+  .config-tag button {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    line-height: 1;
+  }
+  .config-tag button:hover { color: var(--red); }
+  .config-tags-container { display: flex; flex-wrap: wrap; margin-bottom: 10px; min-height: 36px; }
+  .config-add-row { display: flex; gap: 8px; margin-top: 8px; }
+  .config-add-row input { flex: 1; }
   .don-mode-btn.active-bancaire { background: var(--blue-dim); color: var(--blue); border-color: var(--blue); }
+
+  .checkbox-group.annulee {
+    background: var(--red-dim);
+    border-color: var(--red);
+  }
+  .checkbox-group.annulee label { color: var(--red); }
+
+  .badge-annulee {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
 
   /* SUBMIT BTN */
   .btn-submit {
@@ -943,6 +990,24 @@
       </div>
 
       <div class="card">
+        <div class="card-title">🎲 Types de soirées</div>
+        <div class="config-tags-container" id="config-soirees"></div>
+        <div class="config-add-row">
+          <input type="text" id="new-soiree-input" placeholder="ex: Escape Game..."/>
+          <button class="btn-primary" onclick="addConfigItem('soirees', 'new-soiree-input')">Ajouter</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📍 Lieux</div>
+        <div class="config-tags-container" id="config-lieux"></div>
+        <div class="config-add-row">
+          <input type="text" id="new-lieu-input" placeholder="ex: Salle des fêtes..."/>
+          <button class="btn-primary" onclick="addConfigItem('lieux', 'new-lieu-input')">Ajouter</button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">Journal d'audit</div>
         <div id="audit-list"></div>
       </div>
@@ -1024,6 +1089,12 @@
 
     <div id="entree-extra-group" style="display:none">
 
+      <!-- Case "Soirée annulée" -->
+      <div class="checkbox-group annulee" style="margin-bottom:8px" onclick="toggleAnnulee()">
+        <input type="checkbox" id="op-annulee" onclick="event.stopPropagation();toggleAnnulee()"/>
+        <label for="op-annulee">❌ Soirée annulée</label>
+      </div>
+
       <!-- Case "Pas de dons" -->
       <div class="checkbox-group" style="margin-bottom:12px" onclick="togglePasDeDon()">
         <input type="checkbox" id="op-pas-de-don" onclick="event.stopPropagation();togglePasDeDon()"/>
@@ -1054,22 +1125,12 @@
           <label>Type de soirée</label>
           <select id="op-type-soiree">
             <option value="">— Sélectionner —</option>
-            <option value="Loups-Garous">🐺 Loups-Garous</option>
-            <option value="Jeux de Société">🎲 Jeux de Société</option>
-            <option value="Just Dance">🕺 Just Dance</option>
-            <option value="BuzzQuiz">🎯 BuzzQuiz</option>
-            <option value="Blind Test">🎵 Blind Test</option>
-            <option value="Autre">📦 Autre</option>
           </select>
         </div>
         <div class="form-group">
           <label>Lieu</label>
           <select id="op-lieu">
             <option value="">— Sélectionner —</option>
-            <option value="La Hune">La Hune</option>
-            <option value="L'Audace">L'Audace</option>
-            <option value="Quai des lumières">Quai des lumières</option>
-            <option value="Autre">Autre</option>
           </select>
         </div>
       </div>
@@ -1248,6 +1309,9 @@ function initApp() {
     renderStats();
   });
 
+  // Charger la config (soirées & lieux) pour tout le monde
+  loadConfig();
+
   if (currentUserData?.role === 'admin') {
     loadMembers();
     loadAudit();
@@ -1408,8 +1472,9 @@ function renderStats() {
   const typeMap = {};
   entrees.forEach(op => {
     if (!op.typeSoiree) return;
-    if (!typeMap[op.typeSoiree]) typeMap[op.typeSoiree] = { total: 0, nb: 0, pasDeDon: 0 };
-    if (op.pasDeDon) { typeMap[op.typeSoiree].pasDeDon++; }
+    if (!typeMap[op.typeSoiree]) typeMap[op.typeSoiree] = { total: 0, nb: 0, pasDeDon: 0, annulee: 0 };
+    if (op.soireeAnnulee) { typeMap[op.typeSoiree].annulee++; }
+    else if (op.pasDeDon) { typeMap[op.typeSoiree].pasDeDon++; }
     else { typeMap[op.typeSoiree].total += op.montant || 0; }
     typeMap[op.typeSoiree].nb++;
   });
@@ -1425,7 +1490,7 @@ function renderStats() {
         <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(v.total/maxType*100).toFixed(1)}%;background:var(--purple)"></div></div>
         <div style="text-align:right;flex-shrink:0;width:90px">
           <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--green)">${fmt(v.total)}</div>
-          <div style="font-size:10px;color:var(--text3)">${v.nb} soirée${v.nb>1?'s':''} · ${v.pasDeDon} sans don</div>
+          <div style="font-size:10px;color:var(--text3)">${v.nb} soirée${v.nb>1?'s':''} · ${v.pasDeDon} sans don · ${v.annulee} annulée${v.annulee>1?'s':''}</div>
         </div>
       </div>`).join('');
 
@@ -1502,6 +1567,91 @@ function renderStats() {
 }
 
 // ── ADMIN ──
+// ── CONFIG (soirées & lieux) ──
+let configData = { soirees: [], lieux: [] };
+
+async function loadConfig() {
+  const snap = await getDoc(doc(db, 'config', 'listes'));
+  if (snap.exists()) {
+    configData = snap.data();
+  } else {
+    // Valeurs par défaut si rien en base
+    configData = {
+      soirees: ['Loups-Garous', 'Jeux de Société', 'Just Dance', 'BuzzQuiz', 'Blind Test'],
+      lieux: ['La Hune', "L'Audace", 'Quai des lumières']
+    };
+    await saveConfig();
+  }
+  populateSelects();
+  renderConfigTags();
+}
+
+async function saveConfig() {
+  const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  await setDoc(doc(db, 'config', 'listes'), configData);
+}
+
+function populateSelects() {
+  const soireeSelect = document.getElementById('op-type-soiree');
+  const lieuSelect = document.getElementById('op-lieu');
+  if (!soireeSelect || !lieuSelect) return;
+
+  const savedSoiree = soireeSelect.value;
+  const savedLieu = lieuSelect.value;
+
+  soireeSelect.innerHTML = '<option value="">— Sélectionner —</option>' +
+    configData.soirees.map(s => `<option value="${s}">${s}</option>`).join('');
+  lieuSelect.innerHTML = '<option value="">— Sélectionner —</option>' +
+    configData.lieux.map(l => `<option value="${l}">${l}</option>`).join('');
+
+  // Restaurer la sélection si elle existe encore
+  if (savedSoiree) soireeSelect.value = savedSoiree;
+  if (savedLieu) lieuSelect.value = savedLieu;
+}
+
+function renderConfigTags() {
+  const soireesEl = document.getElementById('config-soirees');
+  const lieuxEl = document.getElementById('config-lieux');
+  if (!soireesEl || !lieuxEl) return;
+
+  soireesEl.innerHTML = configData.soirees.map((s, i) => `
+    <div class="config-tag">
+      <span>${s}</span>
+      <button onclick="removeConfigItem('soirees', ${i})" title="Supprimer">✕</button>
+    </div>`).join('') || '<span style="color:var(--text3);font-size:13px">Aucun type — ajoutez-en un</span>';
+
+  lieuxEl.innerHTML = configData.lieux.map((l, i) => `
+    <div class="config-tag">
+      <span>${l}</span>
+      <button onclick="removeConfigItem('lieux', ${i})" title="Supprimer">✕</button>
+    </div>`).join('') || '<span style="color:var(--text3);font-size:13px">Aucun lieu — ajoutez-en un</span>';
+}
+
+window.addConfigItem = async (type, inputId) => {
+  const input = document.getElementById(inputId);
+  const val = input.value.trim();
+  if (!val) return;
+  if (configData[type].includes(val)) { showToast('Déjà dans la liste', 'error'); return; }
+  configData[type].push(val);
+  await saveConfig();
+  await logAudit('config', `Ajout ${type}: ${val}`);
+  input.value = '';
+  populateSelects();
+  renderConfigTags();
+  showToast(`"${val}" ajouté ✓`, 'success');
+};
+
+window.removeConfigItem = async (type, index) => {
+  const val = configData[type][index];
+  if (!confirm(`Supprimer "${val}" de la liste ?`)) return;
+  configData[type].splice(index, 1);
+  await saveConfig();
+  await logAudit('config', `Suppression ${type}: ${val}`);
+  populateSelects();
+  renderConfigTags();
+  showToast(`"${val}" supprimé`, 'success');
+};
+
 async function loadMembers() {
   const snap = await getDocs(collection(db, 'members'));
   const listEl = document.getElementById('members-list');
@@ -1530,8 +1680,6 @@ window.addMember = async () => {
   const role = document.getElementById('new-member-role').value;
   if (!email || !email.includes('@')) { showToast('Email invalide', 'error'); return; }
 
-  await doc(db, 'members', email);
-  await addDoc(collection(db, 'members'), {}); // workaround: use setDoc
   const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await setDoc(doc(db, 'members', email), { role, addedBy: currentUser.email, addedAt: serverTimestamp() });
 
@@ -1588,7 +1736,9 @@ window.openModal = (type) => {
   document.getElementById('op-lieu').value = '';
   document.getElementById('op-inscrits').value = '';
   document.getElementById('op-virement-par').value = '';
+  document.getElementById('op-annulee').checked = false;
   document.getElementById('op-pas-de-don').checked = false;
+  document.getElementById('op-pas-de-don').disabled = false;
   document.getElementById('op-don-origine').value = '';
   document.getElementById('op-montant').disabled = false;
   currentDonMode = 'liquide';
@@ -1641,6 +1791,32 @@ window.removeFile = () => {
 };
 
 // ── PAS DE DON ──
+window.toggleAnnulee = () => {
+  const cb = document.getElementById('op-annulee');
+  const pasDeDonCb = document.getElementById('op-pas-de-don');
+  const montantInput = document.getElementById('op-montant');
+  const donModeGroup = document.getElementById('don-mode-group');
+  const donOrigineGroup = document.getElementById('don-origine-group');
+
+  if (cb.checked) {
+    // Annulée → force pas de don aussi, désactive tout
+    pasDeDonCb.checked = true;
+    montantInput.value = '0';
+    montantInput.disabled = true;
+    donModeGroup.style.opacity = '0.4';
+    donModeGroup.style.pointerEvents = 'none';
+    donOrigineGroup.style.display = 'none';
+    pasDeDonCb.disabled = true;
+  } else {
+    pasDeDonCb.checked = false;
+    pasDeDonCb.disabled = false;
+    montantInput.value = '';
+    montantInput.disabled = false;
+    donModeGroup.style.opacity = '1';
+    donModeGroup.style.pointerEvents = 'auto';
+  }
+};
+
 window.togglePasDeDon = () => {
   const cb = document.getElementById('op-pas-de-don');
   const montantInput = document.getElementById('op-montant');
@@ -1707,6 +1883,7 @@ window.submitOperation = async () => {
       typeSoiree: currentType === 'entree' ? (document.getElementById('op-type-soiree').value || null) : null,
       lieu: currentType === 'entree' ? (document.getElementById('op-lieu').value || null) : null,
       nbInscrits: currentType === 'entree' ? (parseInt(document.getElementById('op-inscrits').value) || null) : null,
+      soireeAnnulee: currentType === 'entree' ? (document.getElementById('op-annulee')?.checked || false) : false,
       pasDeDon: currentType === 'entree' ? (document.getElementById('op-pas-de-don')?.checked || false) : false,
       donMode: currentType === 'entree' ? currentDonMode : null,
       donOrigine: currentType === 'entree' && currentDonMode === 'bancaire' ? (document.getElementById('op-don-origine').value || null) : null,
@@ -1789,7 +1966,8 @@ window.showDetail = (id) => {
     ${op.typeSoiree ? `<div class="detail-row"><span class="detail-key">Type de soirée</span><span class="detail-val">${op.typeSoiree}</span></div>` : ''}
     ${op.lieu ? `<div class="detail-row"><span class="detail-key">Lieu</span><span class="detail-val">${op.lieu}</span></div>` : ''}
     ${op.nbInscrits ? `<div class="detail-row"><span class="detail-key">Inscrits</span><span class="detail-val">${op.nbInscrits} personnes</span></div>` : ''}
-    ${op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
+    ${op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val" style="color:var(--red)">❌ Soirée annulée</span></div>` : ''}
+    ${op.pasDeDon && !op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
     ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''};
@@ -1850,7 +2028,14 @@ window.openEditModal = (id) => {
   document.getElementById('op-virement-par').value = op.virementPar || '';
 
   if (op.type === 'entree') {
+    document.getElementById('op-annulee').checked = op.soireeAnnulee || false;
     document.getElementById('op-pas-de-don').checked = op.pasDeDon || false;
+    document.getElementById('op-pas-de-don').disabled = op.soireeAnnulee || false;
+    if (op.soireeAnnulee) {
+      document.getElementById('op-montant').disabled = true;
+      document.getElementById('don-mode-group').style.opacity = '0.4';
+      document.getElementById('don-mode-group').style.pointerEvents = 'none';
+    }
     document.getElementById('op-type-soiree').value = op.typeSoiree || '';
     document.getElementById('op-lieu').value = op.lieu || '';
     document.getElementById('op-inscrits').value = op.nbInscrits || '';
@@ -1937,7 +2122,7 @@ function opItemHTML(op) {
     <div class="op-item" onclick="showDetail('${op.id}')">
       <div class="op-dot ${op.type}"></div>
       <div class="op-info">
-        <div class="op-desc">${mainLabel}</div>
+        <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}</div>
         <div class="op-meta">${subLabel}${op.auteurNom || op.auteur ? ' · ' + (op.auteurNom || op.auteur) : ''}</div>
       </div>
       ${op.driveLink ? '<span class="op-attach">📎</span>' : ''}
@@ -1970,6 +2155,7 @@ window.showPage = (page) => {
   if (page === 'admin' && currentUserData?.role === 'admin') {
     loadMembers();
     loadAudit();
+    renderConfigTags();
   }
 };
 

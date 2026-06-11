@@ -2058,7 +2058,7 @@ window.showDetail = (id) => {
     a.href = f.link;
     a.target = '_blank';
     a.className = 'btn-drive';
-    a.innerHTML = \`📁 \${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}\${f.name || 'Voir le justificatif'}\`;
+    a.innerHTML = `📁 ${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}${f.name || 'Voir le justificatif'}`;
     actionsEl.appendChild(a);
   });
 

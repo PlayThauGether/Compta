@@ -910,6 +910,21 @@
         <div class="card-title">Activité mensuelle</div>
         <div class="chart-bar-container" id="monthly-chart"></div>
       </div>
+
+      <div class="card">
+        <div class="card-title">🎲 Dons par type de soirée</div>
+        <div class="chart-bar-container" id="soiree-type-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📍 Dons par lieu</div>
+        <div class="chart-bar-container" id="soiree-lieu-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📊 Détail par soirée</div>
+        <div id="soiree-detail-chart"></div>
+      </div>
     </div>
 
     <!-- ADMIN -->
@@ -968,7 +983,7 @@
 
     <div class="form-group" id="cat-group">
       <label>Catégorie</label>
-      <select id="op-cat">
+      <select id="op-cat" onchange="toggleAutrePrecision()">
         <option value="">— Sélectionner —</option>
         <optgroup label="Entrées">
           <option value="Don">🎁 Don</option>
@@ -986,9 +1001,15 @@
           <option value="Communication">📢 Communication</option>
           <option value="Transport">🚗 Transport</option>
           <option value="Remboursement">💸 Remboursement membre</option>
+          <option value="Frais bancaire">🏦 Frais bancaire</option>
           <option value="Autre sortie">📦 Autre sortie</option>
         </optgroup>
       </select>
+    </div>
+
+    <div class="form-group" id="autre-precision-group" style="display:none">
+      <label>Précisez</label>
+      <input type="text" id="op-autre-precision" placeholder="Décrivez la catégorie..."/>
     </div>
 
     <div class="form-group" id="soiree-group">
@@ -1379,6 +1400,105 @@ function renderStats() {
         </div>
         <div class="chart-bar-val" style="font-size:10px;line-height:1.6"><div style="color:var(--green)">${fmt(v.entree)}</div><div style="color:var(--red)">${fmt(v.sortie)}</div></div>
       </div>`).join('');
+
+  // ── STATS SOIRÉES ──
+  const entrees = allOps.filter(op => op.type === 'entree');
+
+  // Par type de soirée
+  const typeMap = {};
+  entrees.forEach(op => {
+    if (!op.typeSoiree) return;
+    if (!typeMap[op.typeSoiree]) typeMap[op.typeSoiree] = { total: 0, nb: 0, pasDeDon: 0 };
+    if (op.pasDeDon) { typeMap[op.typeSoiree].pasDeDon++; }
+    else { typeMap[op.typeSoiree].total += op.montant || 0; }
+    typeMap[op.typeSoiree].nb++;
+  });
+
+  const typeEl = document.getElementById('soiree-type-chart');
+  const typeEntries = Object.entries(typeMap).sort((a, b) => b[1].total - a[1].total);
+  const maxType = typeEntries[0]?.[1].total || 1;
+  typeEl.innerHTML = typeEntries.length === 0
+    ? '<p style="color:var(--text3);font-size:13px">Aucune donnée</p>'
+    : typeEntries.map(([k, v]) => `
+      <div class="chart-bar-row">
+        <div class="chart-bar-label" title="${k}">${k}</div>
+        <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(v.total/maxType*100).toFixed(1)}%;background:var(--purple)"></div></div>
+        <div style="text-align:right;flex-shrink:0;width:90px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--green)">${fmt(v.total)}</div>
+          <div style="font-size:10px;color:var(--text3)">${v.nb} soirée${v.nb>1?'s':''} · ${v.pasDeDon} sans don</div>
+        </div>
+      </div>`).join('');
+
+  // Par lieu
+  const lieuMap = {};
+  entrees.forEach(op => {
+    if (!op.lieu) return;
+    if (!lieuMap[op.lieu]) lieuMap[op.lieu] = { total: 0, nb: 0, pasDeDon: 0 };
+    if (op.pasDeDon) { lieuMap[op.lieu].pasDeDon++; }
+    else { lieuMap[op.lieu].total += op.montant || 0; }
+    lieuMap[op.lieu].nb++;
+  });
+
+  const lieuEl = document.getElementById('soiree-lieu-chart');
+  const lieuEntries = Object.entries(lieuMap).sort((a, b) => b[1].total - a[1].total);
+  const maxLieu = lieuEntries[0]?.[1].total || 1;
+  lieuEl.innerHTML = lieuEntries.length === 0
+    ? '<p style="color:var(--text3);font-size:13px">Aucune donnée</p>'
+    : lieuEntries.map(([k, v]) => `
+      <div class="chart-bar-row">
+        <div class="chart-bar-label" title="${k}">${k}</div>
+        <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(v.total/maxLieu*100).toFixed(1)}%;background:var(--blue)"></div></div>
+        <div style="text-align:right;flex-shrink:0;width:90px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--green)">${fmt(v.total)}</div>
+          <div style="font-size:10px;color:var(--text3)">${v.nb} soirée${v.nb>1?'s':''} · ${v.pasDeDon} sans don</div>
+        </div>
+      </div>`).join('');
+
+  // Détail par soirée (type + lieu combinés)
+  const soireeMap = {};
+  entrees.forEach(op => {
+    if (!op.typeSoiree && !op.lieu) return;
+    const key = [op.typeSoiree, op.lieu].filter(Boolean).join(' — ');
+    if (!soireeMap[key]) soireeMap[key] = { total: 0, nb: 0, pasDeDon: 0, nbInscrits: [] };
+    if (op.pasDeDon) { soireeMap[key].pasDeDon++; }
+    else { soireeMap[key].total += op.montant || 0; }
+    soireeMap[key].nb++;
+    if (op.nbInscrits) soireeMap[key].nbInscrits.push(op.nbInscrits);
+  });
+
+  const detailEl = document.getElementById('soiree-detail-chart');
+  const soireeEntries = Object.entries(soireeMap).sort((a, b) => b[1].total - a[1].total);
+
+  if (soireeEntries.length === 0) {
+    detailEl.innerHTML = '<p style="color:var(--text3);font-size:13px">Aucune donnée</p>';
+  } else {
+    detailEl.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:0.06em">
+            <th style="text-align:left;padding:6px 0;border-bottom:1px solid var(--border)">Soirée</th>
+            <th style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)">Soirées</th>
+            <th style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)">Moy. inscrits</th>
+            <th style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)">Sans don</th>
+            <th style="text-align:right;padding:6px 0;border-bottom:1px solid var(--border)">Total dons</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${soireeEntries.map(([k, v]) => {
+            const avgInscrits = v.nbInscrits.length > 0
+              ? Math.round(v.nbInscrits.reduce((a,b) => a+b, 0) / v.nbInscrits.length)
+              : '—';
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:10px 0;font-weight:600;color:var(--text)">${k}</td>
+              <td style="text-align:center;padding:10px 4px;color:var(--text2)">${v.nb}</td>
+              <td style="text-align:center;padding:10px 4px;color:var(--text2)">${avgInscrits}</td>
+              <td style="text-align:center;padding:10px 4px;color:${v.pasDeDon>0?'var(--orange)':'var(--text3)'}">${v.pasDeDon}</td>
+              <td style="text-align:right;padding:10px 0;font-family:'JetBrains Mono',monospace;color:var(--green);font-weight:600">${fmt(v.total)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
 }
 
 // ── ADMIN ──
@@ -1475,6 +1595,8 @@ window.openModal = (type) => {
   setDonMode('liquide');
   editingOpId = null;
   document.getElementById('op-cat').value = '';
+  document.getElementById('op-autre-precision').value = '';
+  document.getElementById('autre-precision-group').style.display = 'none';
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   removeFile();
   document.getElementById('modal-op').classList.add('open');
@@ -1548,6 +1670,15 @@ window.setDonMode = (mode) => {
   origineGroup.style.display = (mode === 'bancaire' && !pasDeDon) ? 'block' : 'none';
 };
 
+// ── AUTRE PRÉCISION ──
+window.toggleAutrePrecision = () => {
+  const cat = document.getElementById('op-cat').value;
+  const isAutre = cat === 'Autre entrée' || cat === 'Autre sortie';
+  const group = document.getElementById('autre-precision-group');
+  group.style.display = isAutre ? 'block' : 'none';
+  if (!isAutre) document.getElementById('op-autre-precision').value = '';
+};
+
 // ── SUBMIT ──
 window.submitOperation = async () => {
   const montant = parseFloat(document.getElementById('op-montant').value);
@@ -1570,6 +1701,8 @@ window.submitOperation = async () => {
       description,
       date: new Date(date),
       categorie: document.getElementById('op-cat').value || null,
+      autrePrecision: (['Autre entrée','Autre sortie'].includes(document.getElementById('op-cat').value))
+        ? (document.getElementById('op-autre-precision').value.trim() || null) : null,
       soiree: document.getElementById('op-soiree').value.trim() || null,
       typeSoiree: currentType === 'entree' ? (document.getElementById('op-type-soiree').value || null) : null,
       lieu: currentType === 'entree' ? (document.getElementById('op-lieu').value || null) : null,
@@ -1651,7 +1784,7 @@ window.showDetail = (id) => {
     <div class="detail-row"><span class="detail-key">Montant</span><span class="detail-val op-amount ${op.type}">${op.type === 'entree' ? '+' : '-'}${fmt(op.montant)}</span></div>
     <div class="detail-row"><span class="detail-key">Description</span><span class="detail-val">${op.description}</span></div>
     <div class="detail-row"><span class="detail-key">Date</span><span class="detail-val">${d.toLocaleDateString('fr-FR', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</span></div>
-    ${op.categorie ? `<div class="detail-row"><span class="detail-key">Catégorie</span><span class="detail-val">${op.categorie}</span></div>` : ''}
+    ${op.categorie ? `<div class="detail-row"><span class="detail-key">Catégorie</span><span class="detail-val">${op.categorie}${op.autrePrecision ? ' — ' + op.autrePrecision : ''}</span></div>` : ''}
     ${op.soiree ? `<div class="detail-row"><span class="detail-key">Soirée</span><span class="detail-val">${op.soiree}</span></div>` : ''}
     ${op.typeSoiree ? `<div class="detail-row"><span class="detail-key">Type de soirée</span><span class="detail-val">${op.typeSoiree}</span></div>` : ''}
     ${op.lieu ? `<div class="detail-row"><span class="detail-key">Lieu</span><span class="detail-val">${op.lieu}</span></div>` : ''}
@@ -1710,6 +1843,8 @@ window.openEditModal = (id) => {
   document.getElementById('op-date').value = d.toISOString().split('T')[0];
   document.getElementById('op-desc').value = op.description || '';
   document.getElementById('op-cat').value = op.categorie || '';
+  document.getElementById('op-autre-precision').value = op.autrePrecision || '';
+  if (op.autrePrecision) document.getElementById('autre-precision-group').style.display = 'block';
   document.getElementById('op-soiree').value = op.soiree || '';
   document.getElementById('op-notes').value = op.notes || '';
   document.getElementById('op-virement-par').value = op.virementPar || '';
@@ -1778,12 +1913,32 @@ function fmt(amount) {
 function opItemHTML(op) {
   const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
   const sign = op.type === 'entree' ? '+' : '-';
+
+  // Construire le titre principal selon le type
+  let mainLabel = '';
+  if (op.type === 'entree') {
+    const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const parts = [];
+    if (op.typeSoiree || op.lieu) parts.push([op.typeSoiree, op.lieu].filter(Boolean).join(' '));
+    const donLabel = op.pasDeDon ? 'Pas de dons' : (op.donMode === 'bancaire' ? 'Don Bancaire' + (op.donOrigine ? ' · ' + op.donOrigine : '') : 'Don Liquide');
+    parts.push(donLabel);
+    mainLabel = dateStr + (parts.length ? ' — ' + parts.join(' · ') : '');
+  } else if (op.type === 'sortie') {
+    const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    mainLabel = dateStr + ' — ' + (op.categorie || op.description);
+  } else if (op.type === 'virement') {
+    const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    mainLabel = dateStr + ' — Virement bancaire' + (op.virementPar ? ' · ' + op.virementPar : '');
+  }
+
+  const subLabel = op.description;
+
   return `
     <div class="op-item" onclick="showDetail('${op.id}')">
       <div class="op-dot ${op.type}"></div>
       <div class="op-info">
-        <div class="op-desc">${op.description}</div>
-        <div class="op-meta">${d.toLocaleDateString('fr-FR')} · ${op.categorie || (op.type === 'virement' ? 'Virement bancaire' : '—')} · ${op.auteurNom || op.auteur}</div>
+        <div class="op-desc">${mainLabel}</div>
+        <div class="op-meta">${subLabel}${op.auteurNom || op.auteur ? ' · ' + (op.auteurNom || op.auteur) : ''}</div>
       </div>
       ${op.driveLink ? '<span class="op-attach">📎</span>' : ''}
       <div class="op-amount ${op.type}">${sign}${fmt(op.montant)}</div>

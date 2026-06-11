@@ -1211,7 +1211,7 @@ if ('serviceWorker' in navigator) {
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc,
   query, orderBy, limit, onSnapshot, serverTimestamp, where }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
@@ -1571,23 +1571,32 @@ function renderStats() {
 let configData = { soirees: [], lieux: [] };
 
 async function loadConfig() {
-  const snap = await getDoc(doc(db, 'config', 'listes'));
-  if (snap.exists()) {
-    configData = snap.data();
-  } else {
-    // Valeurs par défaut si rien en base
-    configData = {
-      soirees: ['Loups-Garous', 'Jeux de Société', 'Just Dance', 'BuzzQuiz', 'Blind Test'],
-      lieux: ['La Hune', "L'Audace", 'Quai des lumières']
-    };
-    await saveConfig();
+  const defaults = {
+    soirees: ['Loups-Garous', 'Jeux de Société', 'Just Dance', 'BuzzQuiz', 'Blind Test'],
+    lieux: ["La Hune", "L'Audace", 'Quai des lumières']
+  };
+  try {
+    const snap = await getDoc(doc(db, 'config', 'listes'));
+    if (snap.exists()) {
+      const data = snap.data();
+      // Merge avec défauts si une liste est absente/vide
+      configData = {
+        soirees: (data.soirees && data.soirees.length > 0) ? data.soirees : defaults.soirees,
+        lieux: (data.lieux && data.lieux.length > 0) ? data.lieux : defaults.lieux
+      };
+    } else {
+      configData = { ...defaults };
+      await saveConfig();
+    }
+  } catch(e) {
+    console.warn('loadConfig error:', e);
+    configData = { ...defaults };
   }
   populateSelects();
   renderConfigTags();
 }
 
 async function saveConfig() {
-  const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await setDoc(doc(db, 'config', 'listes'), configData);
 }
 
@@ -1680,7 +1689,6 @@ window.addMember = async () => {
   const role = document.getElementById('new-member-role').value;
   if (!email || !email.includes('@')) { showToast('Email invalide', 'error'); return; }
 
-  const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   await setDoc(doc(db, 'members', email), { role, addedBy: currentUser.email, addedAt: serverTimestamp() });
 
   await logAudit('add_member', `Ajout membre ${email} (${role})`);

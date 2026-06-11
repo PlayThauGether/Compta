@@ -453,6 +453,58 @@
   .upload-preview-name { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .upload-remove { background: none; border: none; color: var(--red); cursor: pointer; font-size: 16px; }
 
+  .checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--orange-dim);
+    border: 1px solid var(--orange);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--orange);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .checkbox-group label {
+    color: var(--orange);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .don-mode-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .don-mode-btn {
+    padding: 10px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .don-mode-btn.active-liquide { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+  .don-mode-btn.active-bancaire { background: var(--blue-dim); color: var(--blue); border-color: var(--blue); }
+
   /* SUBMIT BTN */
   .btn-submit {
     width: 100%;
@@ -947,6 +999,32 @@
     </div>
 
     <div id="entree-extra-group" style="display:none">
+
+      <!-- Case "Pas de dons" -->
+      <div class="checkbox-group" style="margin-bottom:12px" onclick="togglePasDeDon()">
+        <input type="checkbox" id="op-pas-de-don" onclick="event.stopPropagation();togglePasDeDon()"/>
+        <label for="op-pas-de-don">🚫 Pas de dons cette soirée (montant = 0)</label>
+      </div>
+
+      <!-- Mode de don : liquide / bancaire -->
+      <div class="form-group" id="don-mode-group">
+        <label>Mode de don</label>
+        <div class="don-mode-selector">
+          <button class="don-mode-btn active-liquide" id="don-liquide-btn" onclick="setDonMode('liquide')">💵 Liquide</button>
+          <button class="don-mode-btn" id="don-bancaire-btn" onclick="setDonMode('bancaire')">🏦 Bancaire</button>
+        </div>
+      </div>
+
+      <!-- Origine don bancaire -->
+      <div class="form-group" id="don-origine-group" style="display:none">
+        <label>Origine du don bancaire</label>
+        <select id="op-don-origine">
+          <option value="">— Sélectionner —</option>
+          <option value="Virement direct">🏦 Virement direct</option>
+          <option value="HelloAsso">💚 HelloAsso</option>
+        </select>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label>Type de soirée</label>
@@ -1014,6 +1092,16 @@
 
 <div class="toast" id="toast"></div>
 
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/Compta/sw.js')
+      .then(r => console.log('SW registered'))
+      .catch(e => console.log('SW error', e));
+  });
+}
+</script>
+
 <!-- FIREBASE + APP -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -1032,7 +1120,7 @@ const FIREBASE_CONFIG = {
   appId: "1:689941976484:web:fa7eb1708f56e809589d31"
 };
 
-const VERCEL_URL = 'https://vercel.com/playthaugethers-projects/compta/3En7eoHveoHN7PunJG9NLzjak1Xi'; // À mettre à jour après déploiement Vercel
+const VERCEL_URL = 'https://ptg-compta.vercel.app'; // À mettre à jour après déploiement Vercel
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -1043,6 +1131,8 @@ let currentUser = null;
 let currentUserData = null;
 let selectedFile = null;
 let currentType = 'entree';
+let currentDonMode = 'liquide';
+let editingOpId = null;
 let filterType = 'all';
 let allOps = [];
 let unsubOps = null;
@@ -1356,6 +1446,12 @@ window.openModal = (type) => {
   document.getElementById('op-lieu').value = '';
   document.getElementById('op-inscrits').value = '';
   document.getElementById('op-virement-par').value = '';
+  document.getElementById('op-pas-de-don').checked = false;
+  document.getElementById('op-don-origine').value = '';
+  document.getElementById('op-montant').disabled = false;
+  currentDonMode = 'liquide';
+  setDonMode('liquide');
+  editingOpId = null;
   document.getElementById('op-cat').value = '';
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   removeFile();
@@ -1400,13 +1496,44 @@ window.removeFile = () => {
   document.getElementById('upload-zone').style.display = 'block';
 };
 
+// ── PAS DE DON ──
+window.togglePasDeDon = () => {
+  const cb = document.getElementById('op-pas-de-don');
+  const montantInput = document.getElementById('op-montant');
+  const donModeGroup = document.getElementById('don-mode-group');
+  const donOrigineGroup = document.getElementById('don-origine-group');
+  if (cb.checked) {
+    montantInput.value = '0';
+    montantInput.disabled = true;
+    donModeGroup.style.opacity = '0.4';
+    donModeGroup.style.pointerEvents = 'none';
+    donOrigineGroup.style.display = 'none';
+  } else {
+    montantInput.value = '';
+    montantInput.disabled = false;
+    donModeGroup.style.opacity = '1';
+    donModeGroup.style.pointerEvents = 'auto';
+    if (currentDonMode === 'bancaire') donOrigineGroup.style.display = 'block';
+  }
+};
+
+window.setDonMode = (mode) => {
+  currentDonMode = mode;
+  document.getElementById('don-liquide-btn').className = 'don-mode-btn' + (mode === 'liquide' ? ' active-liquide' : '');
+  document.getElementById('don-bancaire-btn').className = 'don-mode-btn' + (mode === 'bancaire' ? ' active-bancaire' : '');
+  const origineGroup = document.getElementById('don-origine-group');
+  const pasDeDon = document.getElementById('op-pas-de-don').checked;
+  origineGroup.style.display = (mode === 'bancaire' && !pasDeDon) ? 'block' : 'none';
+};
+
 // ── SUBMIT ──
 window.submitOperation = async () => {
   const montant = parseFloat(document.getElementById('op-montant').value);
   const description = document.getElementById('op-desc').value.trim();
   const date = document.getElementById('op-date').value;
 
-  if (!montant || montant <= 0) { showToast('Montant invalide', 'error'); return; }
+  const pasDeDon = document.getElementById('op-pas-de-don')?.checked || false;
+  if ((!montant && montant !== 0) || (!pasDeDon && montant <= 0)) { showToast('Montant invalide', 'error'); return; }
   if (!description) { showToast('Description obligatoire', 'error'); return; }
   if (!date) { showToast('Date obligatoire', 'error'); return; }
 
@@ -1425,6 +1552,9 @@ window.submitOperation = async () => {
       typeSoiree: currentType === 'entree' ? (document.getElementById('op-type-soiree').value || null) : null,
       lieu: currentType === 'entree' ? (document.getElementById('op-lieu').value || null) : null,
       nbInscrits: currentType === 'entree' ? (parseInt(document.getElementById('op-inscrits').value) || null) : null,
+      pasDeDon: currentType === 'entree' ? (document.getElementById('op-pas-de-don')?.checked || false) : false,
+      donMode: currentType === 'entree' ? currentDonMode : null,
+      donOrigine: currentType === 'entree' && currentDonMode === 'bancaire' ? (document.getElementById('op-don-origine').value || null) : null,
       virementPar: currentType === 'virement' ? (document.getElementById('op-virement-par').value.trim() || null) : null,
       notes: document.getElementById('op-notes').value.trim() || null,
       auteur: currentUser.email,
@@ -1462,11 +1592,19 @@ window.submitOperation = async () => {
       }
     }
 
-    const docRef = await addDoc(collection(db, 'operations'), opData);
-    await logAudit('add_operation', `${currentType} ${montant}€ — ${description}`);
+    if (editingOpId) {
+      // Update existing
+      const { driveFileId, driveLink, driveFileName, createdAt, auteur, auteurNom, ...updateData } = opData;
+      await updateDoc(doc(db, 'operations', editingOpId), updateData);
+      await logAudit('edit_operation', `Modif ${currentType} ${pasDeDon ? '0 (pas de don)' : montant+'€'} — ${description}`);
+    } else {
+      // New operation
+      await addDoc(collection(db, 'operations'), opData);
+      await logAudit('add_operation', `${currentType} ${pasDeDon ? '0 (pas de don)' : montant+'€'} — ${description}`);
+    }
 
     closeModal('modal-op');
-    showToast('✓ Opération enregistrée', 'success');
+    showToast(editingOpId ? '✓ Opération modifiée' : '✓ Opération enregistrée', 'success');
     removeFile();
 
   } catch(e) {
@@ -1496,6 +1634,9 @@ window.showDetail = (id) => {
     ${op.typeSoiree ? `<div class="detail-row"><span class="detail-key">Type de soirée</span><span class="detail-val">${op.typeSoiree}</span></div>` : ''}
     ${op.lieu ? `<div class="detail-row"><span class="detail-key">Lieu</span><span class="detail-val">${op.lieu}</span></div>` : ''}
     ${op.nbInscrits ? `<div class="detail-row"><span class="detail-key">Inscrits</span><span class="detail-val">${op.nbInscrits} personnes</span></div>` : ''}
+    ${op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
+    ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
+    ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''};
     <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${op.auteurNom || op.auteur}</span></div>
     ${op.notes ? `<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${op.notes}</span></div>` : ''}
@@ -1514,16 +1655,56 @@ window.showDetail = (id) => {
     actionsEl.appendChild(a);
   }
 
+  // Edit button (all members can edit)
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-primary';
+  editBtn.style.flex = '1';
+  editBtn.textContent = '✏️ Modifier';
+  editBtn.onclick = () => openEditModal(id);
+  actionsEl.appendChild(editBtn);
+
   if (currentUserData?.role === 'admin') {
     const btn = document.createElement('button');
     btn.className = 'btn-danger';
     btn.style.flex = '1';
-    btn.textContent = '🗑️ Supprimer cette opération';
+    btn.textContent = '🗑️ Supprimer';
     btn.onclick = () => deleteOperation(id);
     actionsEl.appendChild(btn);
   }
 
   document.getElementById('modal-detail').classList.add('open');
+};
+
+window.openEditModal = (id) => {
+  const op = allOps.find(o => o.id === id);
+  if (!op) return;
+  editingOpId = id;
+  closeModal('modal-detail');
+
+  const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+  setType(op.type);
+  document.getElementById('op-montant').value = op.montant || 0;
+  document.getElementById('op-montant').disabled = op.pasDeDon || false;
+  document.getElementById('op-date').value = d.toISOString().split('T')[0];
+  document.getElementById('op-desc').value = op.description || '';
+  document.getElementById('op-cat').value = op.categorie || '';
+  document.getElementById('op-soiree').value = op.soiree || '';
+  document.getElementById('op-notes').value = op.notes || '';
+  document.getElementById('op-virement-par').value = op.virementPar || '';
+
+  if (op.type === 'entree') {
+    document.getElementById('op-pas-de-don').checked = op.pasDeDon || false;
+    document.getElementById('op-type-soiree').value = op.typeSoiree || '';
+    document.getElementById('op-lieu').value = op.lieu || '';
+    document.getElementById('op-inscrits').value = op.nbInscrits || '';
+    currentDonMode = op.donMode || 'liquide';
+    setDonMode(currentDonMode);
+    document.getElementById('op-don-origine').value = op.donOrigine || '';
+  }
+
+  document.getElementById('modal-title').textContent = '✏️ Modifier l'opération';
+  document.getElementById('submit-btn').textContent = '💾 Enregistrer les modifications';
+  document.getElementById('modal-op').classList.add('open');
 };
 
 window.deleteOperation = async (id) => {

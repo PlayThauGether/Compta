@@ -326,7 +326,7 @@
 
   .op-amount.entree { color: var(--green); }
   .op-amount.sortie { color: var(--red); }
-  .op-amount.virement { color: var(--orange); }
+  .op-amount.virement { color: var(--text2); }
 
   .op-attach { font-size: 14px; color: var(--text3); margin-left: 4px; }
 
@@ -408,7 +408,8 @@
 
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-  .type-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .type-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  @media (max-width: 600px) { .type-selector { grid-template-columns: repeat(2, 1fr); } }
 
   .type-btn {
     padding: 12px 8px;
@@ -533,6 +534,23 @@
   .config-add-row { display: flex; gap: 8px; margin-top: 8px; }
   .config-add-row input { flex: 1; }
   .don-mode-btn.active-bancaire { background: var(--blue-dim); color: var(--blue); border-color: var(--blue); }
+  .type-btn.active-helloasso { background: #1a3a1a; color: #4caf50; border-color: #4caf50; border: 1px solid; }
+
+  .helloasso-form { display: none; }
+  .helloasso-form.visible { display: block; }
+
+  .ha-total-box {
+    background: var(--green-dim);
+    border: 1px solid var(--green);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .ha-total-label { font-size: 13px; color: var(--green); font-weight: 600; }
+  .ha-total-amount { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700; color: var(--green); }
 
   .checkbox-group.annulee {
     background: var(--red-dim);
@@ -939,7 +957,7 @@
           <div class="stat-value" id="stat-total-sorties" style="color:var(--red)">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total virements</div>
+          <div class="stat-label">Virements vers banque</div>
           <div class="stat-value" id="stat-total-virements" style="color:var(--orange)">—</div>
         </div>
         <div class="stat-card">
@@ -1028,8 +1046,44 @@
       <button class="type-btn" onclick="setType('entree')" id="type-entree">➕ Entrée</button>
       <button class="type-btn" onclick="setType('sortie')" id="type-sortie">➖ Sortie</button>
       <button class="type-btn" onclick="setType('virement')" id="type-virement">🏦 Virement</button>
+      <button class="type-btn" onclick="setType('helloasso')" id="type-helloasso">💚 HelloAsso</button>
     </div>
 
+    <!-- FORMULAIRE HELLOASSO -->
+    <div class="helloasso-form" id="helloasso-form">
+      <div class="form-group">
+        <label>Mois du virement HelloAsso</label>
+        <input type="month" id="ha-mois"/>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Adhésions (€)</label>
+          <input type="number" id="ha-adhesions" min="0" step="0.01" placeholder="0,00" oninput="updateHATotal()"/>
+        </div>
+        <div class="form-group">
+          <label>Dons (€)</label>
+          <input type="number" id="ha-dons" min="0" step="0.01" placeholder="0,00" oninput="updateHATotal()"/>
+        </div>
+      </div>
+      <div class="ha-total-box">
+        <span class="ha-total-label">💚 Total HelloAsso</span>
+        <span class="ha-total-amount" id="ha-total">0,00 €</span>
+      </div>
+      <div class="form-group">
+        <label>Justificatifs (relevé HelloAsso...)</label>
+        <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+          <div class="upload-icon">📎</div>
+          <p>Ajouter le relevé HelloAsso<br><span style="font-size:11px">PDF ou image · Plusieurs fichiers OK</span></p>
+        </div>
+        <div class="files-list" id="files-list-ha"></div>
+      </div>
+      <div class="form-group">
+        <label>Notes (optionnel)</label>
+        <textarea id="ha-notes" placeholder="Infos complémentaires..."></textarea>
+      </div>
+    </div>
+
+    <div id="standard-form">
     <div class="form-row">
       <div class="form-group">
         <label>Montant (€)</label>
@@ -1160,6 +1214,7 @@
       <textarea id="op-notes" placeholder="Infos complémentaires..."></textarea>
     </div>
 
+    </div><!-- end standard-form -->
     <button class="btn-submit entree" id="submit-btn" onclick="submitOperation()">Enregistrer</button>
   </div>
 </div>
@@ -1336,7 +1391,7 @@ function renderDashboard() {
     const m = op.montant || 0;
     if (op.type === 'entree') { caisse += m; }
     else if (op.type === 'sortie') { caisse -= m; }
-    else if (op.type === 'virement') { caisse -= m; }
+    // virement = neutre pour la caisse (trace uniquement)
 
     if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
       if (op.type === 'entree') { entreesMois += m; nbEntrees++; }
@@ -1430,7 +1485,7 @@ function renderStats() {
       const cat = op.categorie || 'Non catégorisé';
       catMap[cat] = (catMap[cat] || 0) + op.montant;
     }
-    else if (op.type === 'virement') totalV += op.montant;
+    else if (op.type === 'virement') totalV += op.montant; // juste pour info
   });
 
   document.getElementById('stat-total-entrees').textContent = fmt(totalE);
@@ -1760,6 +1815,13 @@ window.openModal = (type) => {
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   selectedFiles = [];
   renderFilesList();
+  // Reset HelloAsso
+  document.getElementById('ha-adhesions').value = '';
+  document.getElementById('ha-dons').value = '';
+  document.getElementById('ha-notes').value = '';
+  document.getElementById('ha-total').textContent = '0,00 €';
+  const now = new Date();
+  document.getElementById('ha-mois').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   document.getElementById('op-date-mois').checked = false;
   document.getElementById('op-date').style.display = 'block';
   document.getElementById('op-date-mois-input').style.display = 'none';
@@ -1903,6 +1965,90 @@ window.toggleAutrePrecision = () => {
   if (!isAutre) document.getElementById('op-autre-precision').value = '';
 };
 
+// ── SUBMIT HELLOASSO ──
+async function submitHelloAsso() {
+  const mois = document.getElementById('ha-mois').value;
+  const adhesions = parseFloat(document.getElementById('ha-adhesions').value) || 0;
+  const dons = parseFloat(document.getElementById('ha-dons').value) || 0;
+  const total = adhesions + dons;
+  const notes = document.getElementById('ha-notes').value.trim();
+
+  if (!mois) { showToast('Mois obligatoire', 'error'); return; }
+  if (total === 0 && adhesions === 0 && dons === 0) { showToast('Montant invalide', 'error'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enregistrement...';
+
+  try {
+    const [year, month] = mois.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+    const monthLabel = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+    const opData = {
+      type: 'entree',
+      helloasso: true,
+      montant: total,
+      haAdhesions: adhesions,
+      haDons: dons,
+      description: `HelloAsso ${monthLabel}`,
+      date,
+      dateMois: true,
+      categorie: 'HelloAsso',
+      donMode: 'bancaire',
+      donOrigine: 'HelloAsso',
+      notes: notes || null,
+      auteur: currentUser.email,
+      auteurNom: currentUser.displayName || currentUser.email,
+      createdAt: serverTimestamp(),
+      driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
+    };
+
+    // Upload fichiers
+    if (selectedFiles.length > 0) {
+      btn.innerHTML = `<span class="spinner"></span> Upload ${selectedFiles.length} fichier(s)...`;
+      const token = await currentUser.getIdToken();
+      const uploadedFiles = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const f = selectedFiles[i];
+        try {
+          const fileData = await fileToBase64(f);
+          const uploadRes = await fetch(`${VERCEL_URL}/api/upload-drive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: `${mois}_HelloAsso_${f.name}`, mimeType: f.type, fileData, token })
+          });
+          if (uploadRes.ok) {
+            const d = await uploadRes.json();
+            uploadedFiles.push({ fileId: d.fileId, link: d.webViewLink, name: d.fileName });
+          }
+        } catch(e) { console.warn('Upload failed', e); }
+      }
+      if (uploadedFiles.length > 0) {
+        opData.driveFiles = uploadedFiles;
+        opData.driveFileId = uploadedFiles[0].fileId;
+        opData.driveLink = uploadedFiles[0].link;
+        opData.driveFileName = uploadedFiles[0].name;
+      }
+    }
+
+    await addDoc(collection(db, 'operations'), opData);
+    await logAudit('add_operation', `HelloAsso ${monthLabel} — adhésions: ${adhesions}€, dons: ${dons}€, total: ${total}€`);
+
+    closeModal('modal-op');
+    showToast('💚 Virement HelloAsso enregistré ✓', 'success');
+    selectedFiles = [];
+    renderFilesList();
+  } catch(e) {
+    console.error(e);
+    showToast('Erreur : ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💚 Enregistrer le virement HelloAsso';
+    btn.className = 'btn-submit entree';
+  }
+}
+
 // ── SUBMIT ──
 window.submitOperation = async () => {
   const montant = parseFloat(document.getElementById('op-montant').value);
@@ -1912,6 +2058,12 @@ window.submitOperation = async () => {
     ? document.getElementById('op-date-mois-input').value + '-01'
     : document.getElementById('op-date').value;
   const date = dateRaw;
+
+  // ── CAS HELLOASSO ──
+  if (currentType === 'helloasso') {
+    await submitHelloAsso();
+    return;
+  }
 
   const pasDeDon = document.getElementById('op-pas-de-don')?.checked || false;
   if ((!montant && montant !== 0) || (!pasDeDon && montant <= 0)) { showToast('Montant invalide', 'error'); return; }
@@ -2020,11 +2172,11 @@ window.showDetail = (id) => {
   if (!op) return;
 
   const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
-  const typeLabel = { entree: '➕ Entrée', sortie: '➖ Sortie', virement: '🏦 Virement' }[op.type];
+  const typeLabel = { entree: '➕ Entrée', sortie: '➖ Sortie', virement: '🏦 Virement caisse → banque' }[op.type];
 
   document.getElementById('detail-title').textContent = typeLabel;
   document.getElementById('detail-content').innerHTML = `
-    <div class="detail-row"><span class="detail-key">Montant</span><span class="detail-val op-amount ${op.type}">${op.type === 'entree' ? '+' : '-'}${fmt(op.montant)}</span></div>
+    <div class="detail-row"><span class="detail-key">Montant</span><span class="detail-val op-amount ${op.type}">${op.type === 'entree' ? '+' : op.type === 'virement' ? '→ ' : '-'}${fmt(op.montant)}</span></div>
     <div class="detail-row"><span class="detail-key">Description</span><span class="detail-val">${op.description}</span></div>
     <div class="detail-row"><span class="detail-key">Date</span><span class="detail-val">${d.toLocaleDateString('fr-FR', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</span></div>
     ${op.categorie ? `<div class="detail-row"><span class="detail-key">Catégorie</span><span class="detail-val">${op.categorie}${op.autrePrecision ? ' — ' + op.autrePrecision : ''}</span></div>` : ''}
@@ -2032,7 +2184,12 @@ window.showDetail = (id) => {
     ${op.typeSoiree ? `<div class="detail-row"><span class="detail-key">Type de soirée</span><span class="detail-val">${op.typeSoiree}</span></div>` : ''}
     ${op.lieu ? `<div class="detail-row"><span class="detail-key">Lieu</span><span class="detail-val">${op.lieu}</span></div>` : ''}
     ${op.nbInscrits ? `<div class="detail-row"><span class="detail-key">Inscrits</span><span class="detail-val">${op.nbInscrits} personnes</span></div>` : ''}
-    ${op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val" style="color:var(--red)">❌ Soirée annulée</span></div>` : ''}
+    ${op.helloasso ? `
+      <div class="detail-row"><span class="detail-key">💚 Type</span><span class="detail-val" style="color:#4caf50;font-weight:700">Virement HelloAsso</span></div>
+      <div class="detail-row"><span class="detail-key">Adhésions</span><span class="detail-val" style="color:var(--green)">${fmt(op.haAdhesions || 0)}</span></div>
+      <div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--green)">${fmt(op.haDons || 0)}</span></div>
+    ` : ''}
+    ${!op.helloasso && op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val" style="color:var(--red)">❌ Soirée annulée</span></div>` : ''}
     ${op.pasDeDon && !op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
     ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
@@ -2142,7 +2299,7 @@ window.exportCSV = () => {
     return [
       d.toLocaleDateString('fr-FR'),
       op.type,
-      (op.type === 'entree' ? '+' : '-') + op.montant.toFixed(2),
+      (op.type === 'entree' ? '+' : op.type === 'virement' ? '→' : '-') + op.montant.toFixed(2),
       op.description || '',
       op.categorie || '',
       op.soiree || '',
@@ -2172,11 +2329,14 @@ function fmt(amount) {
 
 function opItemHTML(op) {
   const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
-  const sign = op.type === 'entree' ? '+' : '-';
+  const sign = op.type === 'entree' ? '+' : op.type === 'virement' ? '' : '-';
 
   // Construire le titre principal selon le type
   let mainLabel = '';
-  if (op.type === 'entree') {
+  if (op.helloasso) {
+    const monthLabel = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    mainLabel = `💚 HelloAsso — ${monthLabel}`;
+  } else if (op.type === 'entree') {
     const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const parts = [];
     if (op.typeSoiree || op.lieu) parts.push([op.typeSoiree, op.lieu].filter(Boolean).join(' '));

@@ -1097,6 +1097,33 @@
 
 
 
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/Compta/sw.js')
+      .then(r => {
+        // Vérifie si une mise à jour est disponible
+        r.addEventListener('updatefound', () => {
+          const newWorker = r.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // Nouvelle version dispo → recharge automatiquement
+              window.location.reload();
+            }
+          });
+        });
+      })
+      .catch(e => console.log('SW error', e));
+  });
+
+  // Recharge quand le SW prend le contrôle
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) { refreshing = true; window.location.reload(); }
+  });
+}
+</script>
+
 <!-- FIREBASE + APP -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';

@@ -1835,17 +1835,36 @@ window.closeModal = (id) => {
 
 window.setType = (type) => {
   currentType = type;
-  ['entree', 'sortie', 'virement'].forEach(t => {
-    document.getElementById('type-' + t).className = 'type-btn' + (t === type ? ' active-' + t : '');
+  const isHA = type === 'helloasso';
+
+  // Boutons actifs
+  ['entree', 'sortie', 'virement', 'helloasso'].forEach(t => {
+    const btn = document.getElementById('type-' + t);
+    if (btn) btn.className = 'type-btn' + (t === type ? ' active-' + t : '');
   });
-  document.getElementById('submit-btn').className = 'btn-submit ' + type;
-  document.getElementById('submit-btn').textContent = type === 'entree' ? '➕ Enregistrer l\'entrée' :
+
+  // Afficher/masquer les deux formulaires
+  document.getElementById('standard-form').style.display = isHA ? 'none' : 'block';
+  document.getElementById('helloasso-form').style.display = isHA ? 'block' : 'none';
+
+  // Bouton submit
+  const submitType = isHA ? 'entree' : type;
+  document.getElementById('submit-btn').className = 'btn-submit ' + submitType;
+  document.getElementById('submit-btn').textContent = isHA ? '💚 Enregistrer le virement HelloAsso' :
+    type === 'entree' ? "➕ Enregistrer l'entrée" :
     type === 'sortie' ? '➖ Enregistrer la sortie' : '🏦 Enregistrer le virement';
-  document.getElementById('cat-group').style.display = type === 'virement' ? 'none' : 'block';
-  document.getElementById('soiree-group').style.display = type === 'virement' ? 'none' : 'block';
-  document.getElementById('entree-extra-group').style.display = type === 'entree' ? 'block' : 'none';
-  document.getElementById('virement-par-group').style.display = type === 'virement' ? 'block' : 'none';
-  document.getElementById('modal-title').textContent = type === 'entree' ? 'Nouvelle entrée' :
+
+  // Champs standard uniquement si pas HelloAsso
+  if (!isHA) {
+    document.getElementById('cat-group').style.display = type === 'virement' ? 'none' : 'block';
+    document.getElementById('soiree-group').style.display = type === 'virement' ? 'none' : 'block';
+    document.getElementById('entree-extra-group').style.display = type === 'entree' ? 'block' : 'none';
+    document.getElementById('virement-par-group').style.display = type === 'virement' ? 'block' : 'none';
+  }
+
+  // Titre modal
+  document.getElementById('modal-title').textContent = isHA ? '💚 Virement HelloAsso' :
+    type === 'entree' ? 'Nouvelle entrée' :
     type === 'sortie' ? 'Nouvelle sortie' : 'Virement caisse → banque';
 };
 

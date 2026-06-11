@@ -941,6 +941,42 @@
       <input type="text" id="op-soiree" placeholder="Soirée jeux 14/06..."/>
     </div>
 
+    <div class="form-group" id="virement-par-group" style="display:none">
+      <label>Virement effectué par</label>
+      <input type="text" id="op-virement-par" placeholder="Prénom Nom..."/>
+    </div>
+
+    <div id="entree-extra-group" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Type de soirée</label>
+          <select id="op-type-soiree">
+            <option value="">— Sélectionner —</option>
+            <option value="Loups-Garous">🐺 Loups-Garous</option>
+            <option value="Jeux de Société">🎲 Jeux de Société</option>
+            <option value="Just Dance">🕺 Just Dance</option>
+            <option value="BuzzQuiz">🎯 BuzzQuiz</option>
+            <option value="Blind Test">🎵 Blind Test</option>
+            <option value="Autre">📦 Autre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Lieu</label>
+          <select id="op-lieu">
+            <option value="">— Sélectionner —</option>
+            <option value="La Hune">La Hune</option>
+            <option value="L'Audace">L'Audace</option>
+            <option value="Quai des lumières">Quai des lumières</option>
+            <option value="Autre">Autre</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Nombre d'inscrits</label>
+        <input type="number" id="op-inscrits" min="0" placeholder="0"/>
+      </div>
+    </div>
+
     <div class="form-group">
       <label>Justificatif (photo, ticket...)</label>
       <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
@@ -996,7 +1032,7 @@ const FIREBASE_CONFIG = {
   appId: "1:689941976484:web:fa7eb1708f56e809589d31"
 };
 
-const VERCEL_URL = 'https://vercel.com/playthaugethers-projects/compta/3En7eoHveoHN7PunJG9NLzjak1Xi'; // À mettre à jour après déploiement Vercel
+const VERCEL_URL = 'https://ptg-compta.vercel.app'; // À mettre à jour après déploiement Vercel
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -1316,6 +1352,10 @@ window.openModal = (type) => {
   document.getElementById('op-desc').value = '';
   document.getElementById('op-notes').value = '';
   document.getElementById('op-soiree').value = '';
+  document.getElementById('op-type-soiree').value = '';
+  document.getElementById('op-lieu').value = '';
+  document.getElementById('op-inscrits').value = '';
+  document.getElementById('op-virement-par').value = '';
   document.getElementById('op-cat').value = '';
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   removeFile();
@@ -1336,6 +1376,8 @@ window.setType = (type) => {
     type === 'sortie' ? '➖ Enregistrer la sortie' : '🏦 Enregistrer le virement';
   document.getElementById('cat-group').style.display = type === 'virement' ? 'none' : 'block';
   document.getElementById('soiree-group').style.display = type === 'virement' ? 'none' : 'block';
+  document.getElementById('entree-extra-group').style.display = type === 'entree' ? 'block' : 'none';
+  document.getElementById('virement-par-group').style.display = type === 'virement' ? 'block' : 'none';
   document.getElementById('modal-title').textContent = type === 'entree' ? 'Nouvelle entrée' :
     type === 'sortie' ? 'Nouvelle sortie' : 'Virement caisse → banque';
 };
@@ -1380,6 +1422,10 @@ window.submitOperation = async () => {
       date: new Date(date),
       categorie: document.getElementById('op-cat').value || null,
       soiree: document.getElementById('op-soiree').value.trim() || null,
+      typeSoiree: currentType === 'entree' ? (document.getElementById('op-type-soiree').value || null) : null,
+      lieu: currentType === 'entree' ? (document.getElementById('op-lieu').value || null) : null,
+      nbInscrits: currentType === 'entree' ? (parseInt(document.getElementById('op-inscrits').value) || null) : null,
+      virementPar: currentType === 'virement' ? (document.getElementById('op-virement-par').value.trim() || null) : null,
       notes: document.getElementById('op-notes').value.trim() || null,
       auteur: currentUser.email,
       auteurNom: currentUser.displayName || currentUser.email,
@@ -1447,6 +1493,10 @@ window.showDetail = (id) => {
     <div class="detail-row"><span class="detail-key">Date</span><span class="detail-val">${d.toLocaleDateString('fr-FR', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</span></div>
     ${op.categorie ? `<div class="detail-row"><span class="detail-key">Catégorie</span><span class="detail-val">${op.categorie}</span></div>` : ''}
     ${op.soiree ? `<div class="detail-row"><span class="detail-key">Soirée</span><span class="detail-val">${op.soiree}</span></div>` : ''}
+    ${op.typeSoiree ? `<div class="detail-row"><span class="detail-key">Type de soirée</span><span class="detail-val">${op.typeSoiree}</span></div>` : ''}
+    ${op.lieu ? `<div class="detail-row"><span class="detail-key">Lieu</span><span class="detail-val">${op.lieu}</span></div>` : ''}
+    ${op.nbInscrits ? `<div class="detail-row"><span class="detail-key">Inscrits</span><span class="detail-val">${op.nbInscrits} personnes</span></div>` : ''}
+    ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''};
     <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${op.auteurNom || op.auteur}</span></div>
     ${op.notes ? `<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${op.notes}</span></div>` : ''}
     ${op.driveLink ? `<div class="detail-row"><span class="detail-key">Justificatif</span><span class="detail-val">📎 ${op.driveFileName || 'Fichier'}</span></div>` : ''}

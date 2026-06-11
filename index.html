@@ -2,6 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>PTG Compta</title>
 <meta name="theme-color" content="#1a1a2e"/>
@@ -1093,19 +1096,14 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// Service Worker désactivé temporairement
-// if ('serviceWorker' in navigator) {
-//   window.addEventListener('load', () => {
-//     navigator.serviceWorker.register('/Compta/sw.js')
-//       .then(r => console.log('SW registered'))
-//       .catch(e => console.log('SW error', e));
-//   });
-// }
-
-// Désenregistre l'ancien SW s'il existe
+// Auto cache-bust : désenregistre tous les SW existants à chaque chargement
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(regs => {
     regs.forEach(reg => reg.unregister());
+  });
+  // Vide tous les caches
+  caches.keys().then(keys => {
+    keys.forEach(key => caches.delete(key));
   });
 }
 </script>

@@ -1038,6 +1038,11 @@
       <div class="form-group">
         <label>Date</label>
         <input type="date" id="op-date"/>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer" onclick="toggleDateMois()">
+          <input type="checkbox" id="op-date-mois" onclick="event.stopPropagation();toggleDateMois()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer"/>
+          <label for="op-date-mois" style="font-size:12px;color:var(--text3);text-transform:none;letter-spacing:0;cursor:pointer;margin:0">Au mois (HelloAsso...)</label>
+        </div>
+        <input type="month" id="op-date-mois-input" style="display:none;margin-top:6px"/>
       </div>
     </div>
 
@@ -1141,17 +1146,13 @@
     </div>
 
     <div class="form-group">
-      <label>Justificatif (photo, ticket...)</label>
-      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-        <input type="file" id="file-input" accept="image/*,.pdf" onchange="handleFileSelect(event)" style="display:none"/>
+      <label>Justificatifs (photos, tickets...)</label>
+      <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept="image/*,.pdf" multiple onchange="handleFileSelect(event)" style="display:none"/>
         <div class="upload-icon">📎</div>
-        <p>Cliquer pour ajouter un fichier<br><span style="font-size:11px">Image ou PDF · Max 8 Mo</span></p>
+        <p>Cliquer pour ajouter des fichiers<br><span style="font-size:11px">Images ou PDF · Max 8 Mo chacun · Plusieurs fichiers OK</span></p>
       </div>
-      <div id="file-preview" style="display:none" class="upload-preview">
-        <span>📄</span>
-        <span class="upload-preview-name" id="file-name"></span>
-        <button class="upload-remove" onclick="removeFile()">✕</button>
-      </div>
+      <div class="files-list" id="files-list"></div>
     </div>
 
     <div class="form-group">
@@ -1237,6 +1238,7 @@ let selectedFile = null;
 let currentType = 'entree';
 let currentDonMode = 'liquide';
 let editingOpId = null;
+let selectedFiles = []; // multi-fichiers
 let filterType = 'all';
 let allOps = [];
 let unsubOps = null;
@@ -1756,7 +1758,11 @@ window.openModal = (type) => {
   document.getElementById('op-autre-precision').value = '';
   document.getElementById('autre-precision-group').style.display = 'none';
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
-  removeFile();
+  selectedFiles = [];
+  renderFilesList();
+  document.getElementById('op-date-mois').checked = false;
+  document.getElementById('op-date').style.display = 'block';
+  document.getElementById('op-date-mois-input').style.display = 'none';
   populateSelects(); // Rafraîchit les listes soirées/lieux à chaque ouverture
   document.getElementById('modal-op').classList.add('open');
 };
@@ -1783,23 +1789,56 @@ window.setType = (type) => {
 
 // ── FILE ──
 window.handleFileSelect = (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  if (f.size > 8 * 1024 * 1024) { showToast('Fichier trop lourd (max 8 Mo)', 'error'); return; }
-  selectedFile = f;
-  document.getElementById('file-name').textContent = f.name;
-  document.getElementById('file-preview').style.display = 'flex';
-  document.getElementById('upload-zone').style.display = 'none';
+  const files = Array.from(e.target.files);
+  let errors = 0;
+  files.forEach(f => {
+    if (f.size > 8 * 1024 * 1024) { errors++; return; }
+    if (selectedFiles.find(sf => sf.name === f.name && sf.size === f.size)) return; // doublon
+    selectedFiles.push(f);
+  });
+  if (errors > 0) showToast(`${errors} fichier(s) trop lourd(s) ignoré(s)`, 'error');
+  document.getElementById('file-input').value = '';
+  renderFilesList();
 };
 
-window.removeFile = () => {
-  selectedFile = null;
+function renderFilesList() {
+  const list = document.getElementById('files-list');
+  if (!list) return;
+  list.innerHTML = selectedFiles.map((f, i) => `
+    <div class="upload-preview">
+      <span>${f.type.includes('pdf') ? '📄' : '🖼️'}</span>
+      <span class="upload-preview-name">${f.name}</span>
+      <span style="font-size:11px;color:var(--text3);flex-shrink:0">${(f.size/1024).toFixed(0)} Ko</span>
+      <button class="upload-remove" onclick="removeFile(${i})">✕</button>
+    </div>`).join('');
+}
+
+window.removeFile = (index) => {
+  if (index === undefined) { selectedFiles = []; }
+  else { selectedFiles.splice(index, 1); }
   document.getElementById('file-input').value = '';
-  document.getElementById('file-preview').style.display = 'none';
-  document.getElementById('upload-zone').style.display = 'block';
+  renderFilesList();
 };
 
 // ── PAS DE DON ──
+window.toggleDateMois = () => {
+  const cb = document.getElementById('op-date-mois');
+  const dateInput = document.getElementById('op-date');
+  const monthInput = document.getElementById('op-date-mois-input');
+  if (cb.checked) {
+    dateInput.style.display = 'none';
+    monthInput.style.display = 'block';
+    // Pré-remplir avec le mois courant
+    if (!monthInput.value) {
+      const now = new Date();
+      monthInput.value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    }
+  } else {
+    dateInput.style.display = 'block';
+    monthInput.style.display = 'none';
+  }
+};
+
 window.toggleAnnulee = () => {
   const cb = document.getElementById('op-annulee');
   const pasDeDonCb = document.getElementById('op-pas-de-don');
@@ -1868,7 +1907,11 @@ window.toggleAutrePrecision = () => {
 window.submitOperation = async () => {
   const montant = parseFloat(document.getElementById('op-montant').value);
   const description = document.getElementById('op-desc').value.trim();
-  const date = document.getElementById('op-date').value;
+  const dateMois = document.getElementById('op-date-mois').checked;
+  const dateRaw = dateMois
+    ? document.getElementById('op-date-mois-input').value + '-01'
+    : document.getElementById('op-date').value;
+  const date = dateRaw;
 
   const pasDeDon = document.getElementById('op-pas-de-don')?.checked || false;
   if ((!montant && montant !== 0) || (!pasDeDon && montant <= 0)) { showToast('Montant invalide', 'error'); return; }
@@ -1885,6 +1928,7 @@ window.submitOperation = async () => {
       montant,
       description,
       date: new Date(date),
+      dateMois: dateMois || false,
       categorie: document.getElementById('op-cat').value || null,
       autrePrecision: (['Autre entrée','Autre sortie'].includes(document.getElementById('op-cat').value))
         ? (document.getElementById('op-autre-precision').value.trim() || null) : null,
@@ -1906,36 +1950,49 @@ window.submitOperation = async () => {
       driveFileName: null,
     };
 
-    // Upload file first if any
-    if (selectedFile) {
-      btn.innerHTML = '<span class="spinner"></span> Upload justificatif...';
-      const fileData = await fileToBase64(selectedFile);
+    // Upload fichiers vers Drive
+    if (selectedFiles.length > 0) {
+      btn.innerHTML = `<span class="spinner"></span> Upload ${selectedFiles.length} fichier(s)...`;
       const token = await currentUser.getIdToken();
+      const uploadedFiles = [];
 
-      const uploadRes = await fetch(`${VERCEL_URL}/api/upload-drive`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: `${date}_${currentType}_${description.slice(0,30)}_${selectedFile.name}`,
-          mimeType: selectedFile.type,
-          fileData,
-          token
-        })
-      });
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const f = selectedFiles[i];
+        btn.innerHTML = `<span class="spinner"></span> Upload ${i+1}/${selectedFiles.length}...`;
+        try {
+          const fileData = await fileToBase64(f);
+          const uploadRes = await fetch(`${VERCEL_URL}/api/upload-drive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName: `${date}_${currentType}_${description.slice(0,20)}_${f.name}`,
+              mimeType: f.type,
+              fileData,
+              token
+            })
+          });
+          if (uploadRes.ok) {
+            const driveData = await uploadRes.json();
+            uploadedFiles.push({ fileId: driveData.fileId, link: driveData.webViewLink, name: driveData.fileName });
+          }
+        } catch(e) { console.warn('Upload failed for', f.name, e); }
+      }
 
-      if (uploadRes.ok) {
-        const driveData = await uploadRes.json();
-        opData.driveFileId = driveData.fileId;
-        opData.driveLink = driveData.webViewLink;
-        opData.driveFileName = driveData.fileName;
-      } else {
-        showToast('⚠️ Opération sauvegardée, upload Drive échoué', 'error');
+      if (uploadedFiles.length > 0) {
+        opData.driveFiles = uploadedFiles;
+        // Compat rétro : garder le premier fichier dans les anciens champs
+        opData.driveFileId = uploadedFiles[0].fileId;
+        opData.driveLink = uploadedFiles[0].link;
+        opData.driveFileName = uploadedFiles[0].name;
+      }
+      if (uploadedFiles.length < selectedFiles.length) {
+        showToast(`⚠️ ${selectedFiles.length - uploadedFiles.length} upload(s) échoué(s)`, 'error');
       }
     }
 
     if (editingOpId) {
       // Update existing
-      const { driveFileId, driveLink, driveFileName, createdAt, auteur, auteurNom, ...updateData } = opData;
+      const { createdAt, auteur, auteurNom, ...updateData } = opData;
       await updateDoc(doc(db, 'operations', editingOpId), updateData);
       await logAudit('edit_operation', `Modif ${currentType} ${pasDeDon ? '0 (pas de don)' : montant+'€'} — ${description}`);
     } else {
@@ -1982,20 +2039,28 @@ window.showDetail = (id) => {
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''};
     <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${op.auteurNom || op.auteur}</span></div>
     ${op.notes ? `<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${op.notes}</span></div>` : ''}
-    ${op.driveLink ? `<div class="detail-row"><span class="detail-key">Justificatif</span><span class="detail-val">📎 ${op.driveFileName || 'Fichier'}</span></div>` : ''}
+    ${(op.driveFiles && op.driveFiles.length > 0)
+      ? op.driveFiles.map((f,i) => `<div class="detail-row"><span class="detail-key">Fichier ${i+1}</span><span class="detail-val">📎 ${f.name || 'Fichier'}</span></div>`).join('')
+      : (op.driveLink ? `<div class="detail-row"><span class="detail-key">Justificatif</span><span class="detail-val">📎 ${op.driveFileName || 'Fichier'}</span></div>` : '')}
+    ${op.dateMois ? `<div class="detail-row"><span class="detail-key">Période</span><span class="detail-val">📅 Au mois</span></div>` : ''}
   `;
 
   const actionsEl = document.getElementById('detail-actions');
   actionsEl.innerHTML = '';
 
-  if (op.driveLink) {
+  // Boutons Drive pour chaque fichier
+  const filesToShow = op.driveFiles && op.driveFiles.length > 0
+    ? op.driveFiles
+    : (op.driveLink ? [{ link: op.driveLink, name: op.driveFileName || 'Justificatif' }] : []);
+
+  filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    a.href = op.driveLink;
+    a.href = f.link;
     a.target = '_blank';
     a.className = 'btn-drive';
-    a.innerHTML = '📁 Voir le justificatif sur Drive';
+    a.innerHTML = \`📁 \${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}\${f.name || 'Voir le justificatif'}\`;
     actionsEl.appendChild(a);
-  }
+  });
 
   // Edit button (all members can edit)
   const editBtn = document.createElement('button');
@@ -2071,7 +2136,7 @@ window.deleteOperation = async (id) => {
 window.exportCSV = () => {
   if (allOps.length === 0) { showToast('Aucune donnée à exporter', 'error'); return; }
 
-  const header = ['Date', 'Type', 'Montant', 'Description', 'Catégorie', 'Soirée', 'Auteur', 'Notes', 'Justificatif Drive'];
+  const header = ['Date', 'Type', 'Montant', 'Description', 'Catégorie', 'Soirée', 'Auteur', 'Notes', 'Au mois', 'Justificatifs Drive'];
   const rows = allOps.map(op => {
     const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
     return [
@@ -2083,7 +2148,8 @@ window.exportCSV = () => {
       op.soiree || '',
       op.auteurNom || op.auteur || '',
       op.notes || '',
-      op.driveLink || ''
+      op.dateMois ? 'Oui' : 'Non',
+      op.driveFiles ? op.driveFiles.map(f => f.link).join(' | ') : (op.driveLink || '')
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';');
   });
 
@@ -2134,7 +2200,7 @@ function opItemHTML(op) {
         <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}</div>
         <div class="op-meta">${subLabel}${op.auteurNom || op.auteur ? ' · ' + (op.auteurNom || op.auteur) : ''}</div>
       </div>
-      ${op.driveLink ? '<span class="op-attach">📎</span>' : ''}
+      ${(op.driveFiles?.length > 0 || op.driveLink) ? `<span class="op-attach">📎${op.driveFiles?.length > 1 ? op.driveFiles.length : ''}</span>` : ''}
       <div class="op-amount ${op.type}">${sign}${fmt(op.montant)}</div>
     </div>`;
 }

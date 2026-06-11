@@ -1757,6 +1757,7 @@ window.openModal = (type) => {
   document.getElementById('autre-precision-group').style.display = 'none';
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   removeFile();
+  populateSelects(); // Rafraîchit les listes soirées/lieux à chaque ouverture
   document.getElementById('modal-op').classList.add('open');
 };
 

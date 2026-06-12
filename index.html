@@ -2229,10 +2229,14 @@ window.showDetail = (id) => {
 
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    // Pour les PDFs Cloudinary, forcer l'ouverture externe
-    const link = f.link && f.link.includes('cloudinary') && f.name?.toLowerCase().endsWith('.pdf')
-      ? f.link.replace('/upload/', '/upload/fl_attachment/')
-      : f.link;
+    // Pour les PDFs Cloudinary, corriger le type de ressource
+    let link = f.link || '';
+    if (link.includes('cloudinary')) {
+      if (f.name?.toLowerCase().endsWith('.pdf') || f.name?.toLowerCase().endsWith('.csv')) {
+        // PDFs et CSVs sont stockés en 'raw', pas en 'image'
+        link = link.replace('/image/upload/', '/raw/upload/').replace('/auto/upload/', '/raw/upload/');
+      }
+    }
     a.href = link;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';

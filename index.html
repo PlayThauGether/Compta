@@ -2232,29 +2232,68 @@ window.showDetail = (id) => {
 
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    // Pour les PDFs Cloudinary : convertir en JPG pour l'affichage
-    let link = f.link || '';
-    if (link.includes('cloudinary') && (f.name?.toLowerCase().endsWith('.pdf') || link.includes('.pdf'))) {
-      link = link.replace('/upload/', '/upload/f_jpg,q_auto/').replace('.pdf', '.jpg');
+    const originalLink = f.link || '';
+    const isPdf = f.name?.toLowerCase().endsWith('.pdf') || originalLink.toLowerCase().includes('.pdf');
+    const label = filesToShow.length > 1 ? `Fichier ${i+1} — ${f.name || ''}` : (f.name || 'Justificatif');
+
+    if (isPdf && originalLink.includes('cloudinary')) {
+      // PDF : bouton aperçu (JPG) + bouton téléchargement
+      const previewLink = originalLink.replace('/upload/', '/upload/f_jpg,q_auto/').replace('.pdf', '.jpg');
+
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'display:flex;gap:8px;margin-bottom:4px';
+
+      const btnPreview = document.createElement('button');
+      btnPreview.className = 'btn-drive';
+      btnPreview.style.flex = '1';
+      btnPreview.innerHTML = `🖼️ Aperçu — ${label}`;
+      btnPreview.onclick = () => {
+        const tmp = document.createElement('a');
+        tmp.href = previewLink;
+        tmp.target = '_blank';
+        tmp.rel = 'noopener noreferrer';
+        document.body.appendChild(tmp);
+        tmp.click();
+        document.body.removeChild(tmp);
+      };
+
+      const btnDl = document.createElement('button');
+      btnDl.className = 'btn-drive';
+      btnDl.style.cssText = 'flex:0;padding:12px;white-space:nowrap';
+      btnDl.innerHTML = '⬇️ PDF';
+      btnDl.onclick = () => {
+        const tmp = document.createElement('a');
+        tmp.href = originalLink;
+        tmp.target = '_blank';
+        tmp.rel = 'noopener noreferrer';
+        tmp.download = f.name || 'justificatif.pdf';
+        document.body.appendChild(tmp);
+        tmp.click();
+        document.body.removeChild(tmp);
+      };
+
+      wrapper.appendChild(btnPreview);
+      wrapper.appendChild(btnDl);
+      actionsEl.appendChild(wrapper);
+    } else {
+      // Image ou autre fichier : bouton simple
+      a.href = originalLink;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'btn-drive';
+      a.innerHTML = `📁 ${label}`;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const tmp = document.createElement('a');
+        tmp.href = originalLink;
+        tmp.target = '_blank';
+        tmp.rel = 'noopener noreferrer';
+        document.body.appendChild(tmp);
+        tmp.click();
+        document.body.removeChild(tmp);
+      });
+      actionsEl.appendChild(a);
     }
-    a.href = link;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.className = 'btn-drive';
-    a.innerHTML = `📁 ${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}${f.name || 'Voir le justificatif'}`;
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      // Créer un lien temporaire et cliquer dessus pour contourner les blocages popup
-      const tmp = document.createElement('a');
-      tmp.href = link;
-      tmp.target = '_blank';
-      tmp.rel = 'noopener noreferrer';
-      tmp.download = f.name || '';
-      document.body.appendChild(tmp);
-      tmp.click();
-      document.body.removeChild(tmp);
-    });
-    actionsEl.appendChild(a);
   });
 
   // Edit button (all members can edit)

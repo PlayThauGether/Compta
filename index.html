@@ -1206,6 +1206,13 @@
       </div>
     </div>
 
+    <div class="form-group" id="presets-group" style="display:none">
+      <label>⚡ Pré-enregistrée</label>
+      <select id="op-preset" onchange="applyPreset()">
+        <option value="">— Choisir une opération —</option>
+      </select>
+    </div>
+
     <div class="form-group">
       <label>Description</label>
       <input type="text" id="op-desc" placeholder="Don soirée, achat pizzas..."/>
@@ -1986,6 +1993,7 @@ window.openModal = (type) => {
   const now = new Date();
   document.getElementById('ha-mois').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   document.getElementById('op-date-mois').checked = false;
+  if (document.getElementById('op-preset')) document.getElementById('op-preset').value = '';
   document.getElementById('op-date').style.display = 'block';
   document.getElementById('op-date-mois-input').style.display = 'none';
   populateSelects(); // Rafraîchit les listes soirées/lieux à chaque ouverture
@@ -2029,6 +2037,47 @@ window.setType = (type) => {
   document.getElementById('modal-title').textContent = isHA ? '💚 Virement HelloAsso' :
     type === 'entree' ? 'Nouvelle entrée' :
     type === 'sortie' ? 'Nouvelle sortie' : 'Virement caisse → banque';
+
+  // Mettre à jour la liste des présets selon le type
+  updatePresetSelect(type);
+};
+
+function updatePresetSelect(type) {
+  const group = document.getElementById('presets-group');
+  const select = document.getElementById('op-preset');
+  if (!select) return;
+
+  // Filtrer les récurrentes par type
+  const filtered = recurrentesData.filter(r => r.type === type);
+
+  if (filtered.length === 0 || type === 'virement' || type === 'helloasso') {
+    group.style.display = 'none';
+    return;
+  }
+
+  group.style.display = 'block';
+  select.innerHTML = '<option value="">— Choisir une opération —</option>' +
+    filtered.map((r, i) => {
+      const globalIndex = recurrentesData.indexOf(r);
+      return `<option value="${globalIndex}">${r.desc} (${r.type === 'entree' ? '+' : '-'}${parseFloat(r.montant).toFixed(2).replace('.', ',')} €)</option>`;
+    }).join('');
+}
+
+window.applyPreset = () => {
+  const select = document.getElementById('op-preset');
+  const idx = parseInt(select.value);
+  if (isNaN(idx)) return;
+
+  const r = recurrentesData[idx];
+  if (!r) return;
+
+  document.getElementById('op-desc').value = r.desc;
+  document.getElementById('op-montant').value = r.montant;
+  document.getElementById('op-cat').value = r.cat || '';
+  document.getElementById('op-notes').value = r.notes || '';
+  if (r.cat) toggleAutrePrecision();
+
+  showToast(`⚡ "${r.desc}" pré-rempli`, 'success');
 };
 
 window.updateHATotal = () => {

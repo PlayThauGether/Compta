@@ -2046,14 +2046,10 @@ async function submitHelloAsso() {
           fd.append('file', f);
           fd.append('upload_preset', 'ptg-compta');
           fd.append('folder', 'ptg-compta/helloasso');
-          const isRaw = ['pdf','csv','xlsx','xls','doc','docx'].some(ext => f.name.toLowerCase().endsWith('.'+ext));
-          const endpoint = isRaw
-            ? 'https://api.cloudinary.com/v1_1/dq0l1eyqs/raw/upload'
-            : 'https://api.cloudinary.com/v1_1/dq0l1eyqs/image/upload';
-          const uploadRes = await fetch(endpoint, { method: 'POST', body: fd });
+          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload', { method: 'POST', body: fd });
           if (uploadRes.ok) {
             const d = await uploadRes.json();
-            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name, isRaw });
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
           }
         } catch(e) { console.warn('Upload failed', e); }
       }
@@ -2148,14 +2144,10 @@ window.submitOperation = async () => {
           fd.append('upload_preset', 'ptg-compta');
           fd.append('folder', 'ptg-compta');
           // PDFs, CSVs et autres docs → endpoint 'raw', images → 'image'
-          const isRaw = ['pdf','csv','xlsx','xls','doc','docx'].some(ext => f.name.toLowerCase().endsWith('.'+ext));
-          const endpoint = isRaw
-            ? 'https://api.cloudinary.com/v1_1/dq0l1eyqs/raw/upload'
-            : 'https://api.cloudinary.com/v1_1/dq0l1eyqs/image/upload';
-          const uploadRes = await fetch(endpoint, { method: 'POST', body: fd });
+          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload', { method: 'POST', body: fd });
           if (uploadRes.ok) {
             const d = await uploadRes.json();
-            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name, isRaw });
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
           }
         } catch(e) { console.warn('Upload failed for', f.name, e); }
       }

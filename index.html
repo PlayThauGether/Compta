@@ -897,6 +897,7 @@
     <button class="nav-btn active" onclick="showPage('dashboard')" data-page="dashboard">🏠 Accueil</button>
     <button class="nav-btn" onclick="showPage('historique')" data-page="historique">📋 Historique</button>
     <button class="nav-btn" onclick="showPage('stats')" data-page="stats">📊 Stats</button>
+    <button class="nav-btn" onclick="showPage('recap')" data-page="recap">📄 Récap</button>
     <button class="nav-btn" id="admin-nav-btn" onclick="showPage('admin')" data-page="admin" style="display:none">⚙️ Admin</button>
   </nav>
 
@@ -1008,8 +1009,35 @@
       </div>
     </div>
 
+    <!-- RÉCAP -->
+    <div class="page" id="page-recap">
+      <div class="card">
+        <div class="card-title">📄 Récapitulatifs annuels</div>
+        <p style="font-size:13px;color:var(--text3);margin-bottom:16px">Télécharge le bilan complet de chaque année au format HTML imprimable.</p>
+        <div id="recap-years-list">
+          <div class="empty-state"><div class="empty-icon">📭</div><p>Aucune donnée</p></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ADMIN -->
     <div class="page" id="page-admin">
+
+      <div class="card">
+        <div class="card-title">👤 Mon profil</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <div class="member-avatar" id="admin-profile-avatar" style="width:48px;height:48px;font-size:18px">?</div>
+          <div>
+            <div id="admin-profile-email" style="font-size:13px;color:var(--text3)"></div>
+            <div id="admin-profile-name" style="font-size:15px;font-weight:600;margin-top:2px"></div>
+          </div>
+        </div>
+        <div class="add-member-form">
+          <input type="text" id="profile-name-input" placeholder="Votre prénom et nom..."/>
+          <button class="btn-primary" onclick="saveProfileName()">Enregistrer</button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">Membres autorisés</div>
         <div id="members-list"></div>
@@ -1737,6 +1765,29 @@ window.removeConfigItem = async (type, index) => {
   showToast(`"${val}" supprimé`, 'success');
 };
 
+window.saveProfileName = async () => {
+  const name = document.getElementById('profile-name-input').value.trim();
+  if (!name) { showToast('Nom invalide', 'error'); return; }
+
+  // Mettre à jour dans Firestore (document members/email)
+  await setDoc(doc(db, 'members', currentUser.email), {
+    ...currentUserData,
+    displayName: name
+  });
+
+  // Mettre à jour localement
+  currentUserData.displayName = name;
+
+  // Mettre à jour l'affichage
+  document.getElementById('user-name-top').textContent = name;
+  document.getElementById('admin-profile-name').textContent = name;
+  document.getElementById('profile-name-input').value = '';
+
+  await logAudit('profile', `Changement de nom : ${name}`);
+  showToast('Nom mis à jour ✓', 'success');
+  loadMembers();
+};
+
 async function loadMembers() {
   const snap = await getDocs(collection(db, 'members'));
   const listEl = document.getElementById('members-list');
@@ -2390,6 +2441,169 @@ window.deleteOperation = async (id) => {
   showToast('Opération supprimée', 'success');
 };
 
+// ── RÉCAP ANNUEL ──
+function renderRecapPage() {
+  const listEl = document.getElementById('recap-years-list');
+  if (!listEl) return;
+
+  if (allOps.length === 0) {
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Aucune opération</p></div>';
+    return;
+  }
+
+  // Grouper par année
+  const years = {};
+  allOps.forEach(op => {
+    const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+    const y = d.getFullYear();
+    if (!years[y]) years[y] = [];
+    years[y].push(op);
+  });
+
+  const sortedYears = Object.keys(years).sort((a, b) => b - a);
+
+  listEl.innerHTML = sortedYears.map(year => {
+    const ops = years[year];
+    const entrees = ops.filter(o => o.type === 'entree').reduce((s, o) => s + (o.montant || 0), 0);
+    const sorties = ops.filter(o => o.type === 'sortie').reduce((s, o) => s + (o.montant || 0), 0);
+    const virements = ops.filter(o => o.type === 'virement').reduce((s, o) => s + (o.montant || 0), 0);
+    const solde = entrees - sorties;
+
+    return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:20px;font-weight:700;color:var(--text)">📅 ${year}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:4px">${ops.length} opérations</div>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div style="text-align:center">
+              <div style="font-size:11px;color:var(--text3)">Entrées</div>
+              <div style="font-family:'JetBrains Mono',monospace;color:var(--green);font-weight:600">${fmt(entrees)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:11px;color:var(--text3)">Sorties</div>
+              <div style="font-family:'JetBrains Mono',monospace;color:var(--red);font-weight:600">${fmt(sorties)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:11px;color:var(--text3)">Virements</div>
+              <div style="font-family:'JetBrains Mono',monospace;color:var(--text2);font-weight:600">${fmt(virements)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:11px;color:var(--text3)">Solde net</div>
+              <div style="font-family:'JetBrains Mono',monospace;color:${solde >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${fmt(solde)}</div>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="downloadRecap(${year})">⬇️ Télécharger</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.downloadRecap = (year) => {
+  const ops = allOps.filter(op => {
+    const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+    return d.getFullYear() === year;
+  }).sort((a, b) => {
+    const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+    const db = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+    return da - db;
+  });
+
+  const entrees = ops.filter(o => o.type === 'entree').reduce((s, o) => s + (o.montant || 0), 0);
+  const sorties = ops.filter(o => o.type === 'sortie').reduce((s, o) => s + (o.montant || 0), 0);
+  const virements = ops.filter(o => o.type === 'virement').reduce((s, o) => s + (o.montant || 0), 0);
+  const solde = entrees - sorties;
+
+  // Grouper par mois
+  const months = {};
+  ops.forEach(op => {
+    const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+    const key = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    if (!months[key]) months[key] = [];
+    months[key].push(op);
+  });
+
+  const typeLabel = { entree: 'Entrée', sortie: 'Sortie', virement: 'Virement' };
+  const typeColor = { entree: '#2ecc8a', sortie: '#e05555', virement: '#888' };
+
+  const monthsHTML = Object.entries(months).map(([month, mops]) => `
+    <div class="month-block">
+      <h3>${month}</h3>
+      <table>
+        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Catégorie</th><th>Auteur</th><th style="text-align:right">Montant</th></tr></thead>
+        <tbody>
+          ${mops.map(op => {
+            const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+            const sign = op.type === 'entree' ? '+' : op.type === 'virement' ? '→' : '-';
+            const extra = op.helloasso ? ` (HelloAsso — Adhés: ${fmt(op.haAdhesions||0)}, Dons: ${fmt(op.haDons||0)})` :
+              op.typeSoiree ? ` — ${op.typeSoiree}${op.lieu ? ' '+op.lieu : ''}` : '';
+            return `<tr>
+              <td>${d.toLocaleDateString('fr-FR')}</td>
+              <td style="color:${typeColor[op.type]};font-weight:600">${typeLabel[op.type]}</td>
+              <td>${op.description || ''}${extra}</td>
+              <td>${op.categorie || '—'}</td>
+              <td>${op.auteurNom || op.auteur || '—'}</td>
+              <td style="text-align:right;font-family:monospace;color:${typeColor[op.type]}">${sign}${fmt(op.montant)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>PTG Compta — Bilan ${year}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 24px; color: #222; }
+  h1 { color: #1a1a2e; border-bottom: 3px solid #5b8cff; padding-bottom: 12px; }
+  h2 { color: #333; margin-top: 32px; }
+  h3 { color: #555; margin: 24px 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .summary { display: flex; gap: 24px; flex-wrap: wrap; margin: 24px 0; }
+  .summary-box { border: 1px solid #ddd; border-radius: 8px; padding: 16px 24px; text-align: center; }
+  .summary-label { font-size: 12px; color: #666; margin-bottom: 6px; }
+  .summary-value { font-size: 22px; font-weight: 700; font-family: monospace; }
+  .green { color: #2ecc8a; } .red { color: #e05555; } .blue { color: #5b8cff; } .grey { color: #888; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+  th { background: #f5f5f5; padding: 8px 10px; text-align: left; border-bottom: 2px solid #ddd; font-size: 11px; text-transform: uppercase; }
+  td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+  tr:hover td { background: #fafafa; }
+  .month-block { margin-bottom: 32px; }
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 12px; color: #999; text-align: center; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+<h1>🎲 Play Thau'Gether — Bilan comptable ${year}</h1>
+<p style="color:#666;font-size:13px">Généré le ${new Date().toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'})}</p>
+
+<h2>Résumé de l'année</h2>
+<div class="summary">
+  <div class="summary-box"><div class="summary-label">Total entrées</div><div class="summary-value green">+${fmt(entrees)}</div></div>
+  <div class="summary-box"><div class="summary-label">Total sorties</div><div class="summary-value red">-${fmt(sorties)}</div></div>
+  <div class="summary-box"><div class="summary-label">Virements banque</div><div class="summary-value grey">→${fmt(virements)}</div></div>
+  <div class="summary-box"><div class="summary-label">Solde net</div><div class="summary-value ${solde >= 0 ? 'green' : 'red'}">${solde >= 0 ? '+' : ''}${fmt(solde)}</div></div>
+</div>
+
+<h2>Détail par mois</h2>
+${monthsHTML}
+
+<div class="footer">PTG Compta · Play Thau'Gether · Bilan ${year} · ${ops.length} opérations</div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PTG_Bilan_${year}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`📄 Bilan ${year} téléchargé ✓`, 'success');
+};
+
 // ── EXPORT CSV ──
 window.exportCSV = () => {
   if (allOps.length === 0) { showToast('Aucune donnée à exporter', 'error'); return; }
@@ -2488,10 +2702,18 @@ window.showPage = (page) => {
   document.getElementById('page-' + page)?.classList.add('active');
   document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
 
+  if (page === 'recap') renderRecapPage();
   if (page === 'admin' && currentUserData?.role === 'admin') {
     loadMembers();
     loadAudit();
     renderConfigTags();
+    // Remplir le profil
+    const avatarEl = document.getElementById('admin-profile-avatar');
+    if (currentUser.photoURL) avatarEl.innerHTML = `<img src="${currentUser.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`;
+    else avatarEl.textContent = (currentUserData.displayName || currentUser.email)[0].toUpperCase();
+    document.getElementById('admin-profile-email').textContent = currentUser.email;
+    document.getElementById('admin-profile-name').textContent = currentUserData.displayName || '— Nom non défini —';
+    document.getElementById('profile-name-input').placeholder = currentUserData.displayName || 'Votre prénom et nom...';
   }
 };
 

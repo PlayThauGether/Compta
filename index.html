@@ -1280,7 +1280,10 @@ const FIREBASE_CONFIG = {
   appId: "1:689941976484:web:fa7eb1708f56e809589d31"
 };
 
-const VERCEL_URL = 'https://compta-three.vercel.app'; // À mettre à jour après déploiement Vercel
+const VERCEL_URL = 'https://compta-three.vercel.app';
+const CLOUDINARY_CLOUD = 'dq0l1eyqs';
+const CLOUDINARY_PRESET = 'ptg-compta';
+const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload`; // À mettre à jour après déploiement Vercel
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -2033,20 +2036,18 @@ async function submitHelloAsso() {
     // Upload fichiers
     if (selectedFiles.length > 0) {
       btn.innerHTML = `<span class="spinner"></span> Upload ${selectedFiles.length} fichier(s)...`;
-      const token = await currentUser.getIdToken();
       const uploadedFiles = [];
       for (let i = 0; i < selectedFiles.length; i++) {
         const f = selectedFiles[i];
         try {
-          const fileData = await fileToBase64(f);
-          const uploadRes = await fetch(`${VERCEL_URL}/api/upload-drive`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileName: `${mois}_HelloAsso_${f.name}`, mimeType: f.type, fileData, token })
-          });
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('upload_preset', 'ptg-compta');
+          fd.append('folder', 'ptg-compta/helloasso');
+          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload', { method: 'POST', body: fd });
           if (uploadRes.ok) {
             const d = await uploadRes.json();
-            uploadedFiles.push({ fileId: d.fileId, link: d.webViewLink, name: d.fileName });
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
           }
         } catch(e) { console.warn('Upload failed', e); }
       }
@@ -2128,43 +2129,33 @@ window.submitOperation = async () => {
       driveFileName: null,
     };
 
-    // Upload fichiers vers Drive
+    // Upload fichiers vers Cloudinary
     if (selectedFiles.length > 0) {
       btn.innerHTML = `<span class="spinner"></span> Upload ${selectedFiles.length} fichier(s)...`;
-      const token = await currentUser.getIdToken();
       const uploadedFiles = [];
-
       for (let i = 0; i < selectedFiles.length; i++) {
         const f = selectedFiles[i];
         btn.innerHTML = `<span class="spinner"></span> Upload ${i+1}/${selectedFiles.length}...`;
         try {
-          const fileData = await fileToBase64(f);
-          const uploadRes = await fetch(`${VERCEL_URL}/api/upload-drive`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fileName: `${date}_${currentType}_${description.slice(0,20)}_${f.name}`,
-              mimeType: f.type,
-              fileData,
-              token
-            })
-          });
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('upload_preset', 'ptg-compta');
+          fd.append('folder', 'ptg-compta');
+          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload', { method: 'POST', body: fd });
           if (uploadRes.ok) {
-            const driveData = await uploadRes.json();
-            uploadedFiles.push({ fileId: driveData.fileId, link: driveData.webViewLink, name: driveData.fileName });
+            const d = await uploadRes.json();
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
           }
         } catch(e) { console.warn('Upload failed for', f.name, e); }
       }
-
       if (uploadedFiles.length > 0) {
         opData.driveFiles = uploadedFiles;
-        // Compat rétro : garder le premier fichier dans les anciens champs
         opData.driveFileId = uploadedFiles[0].fileId;
         opData.driveLink = uploadedFiles[0].link;
         opData.driveFileName = uploadedFiles[0].name;
       }
       if (uploadedFiles.length < selectedFiles.length) {
-        showToast(`⚠️ ${selectedFiles.length - uploadedFiles.length} upload(s) échoué(s)`, 'error');
+        showToast('⚠️ ' + (selectedFiles.length - uploadedFiles.length) + ' upload(s) échoué(s)', 'error');
       }
     }
 

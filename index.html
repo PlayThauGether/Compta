@@ -2250,6 +2250,10 @@ window.showDetail = (id) => {
     a.rel = 'noopener noreferrer';
     a.className = 'btn-drive';
     a.innerHTML = `📁 ${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}${f.name || 'Voir le justificatif'}`;
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.open(link, '_blank', 'noopener,noreferrer');
+    });
     actionsEl.appendChild(a);
   });
 

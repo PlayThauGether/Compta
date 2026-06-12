@@ -1036,6 +1036,9 @@
           <input type="text" id="profile-name-input" placeholder="Votre prénom et nom..."/>
           <button class="btn-primary" onclick="saveProfileName()">Enregistrer</button>
         </div>
+        <button id="update-all-ops-btn" onclick="updateAllOpsName()" style="margin-top:10px;width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:13px;cursor:pointer;display:none">
+          🔄 Mettre à jour mon nom sur toutes mes anciennes opérations
+        </button>
       </div>
 
       <div class="card">
@@ -1769,23 +1772,54 @@ window.saveProfileName = async () => {
   const name = document.getElementById('profile-name-input').value.trim();
   if (!name) { showToast('Nom invalide', 'error'); return; }
 
-  // Mettre à jour dans Firestore (document members/email)
   await setDoc(doc(db, 'members', currentUser.email), {
     ...currentUserData,
     displayName: name
   });
 
-  // Mettre à jour localement
   currentUserData.displayName = name;
-
-  // Mettre à jour l'affichage
   document.getElementById('user-name-top').textContent = name;
   document.getElementById('admin-profile-name').textContent = name;
   document.getElementById('profile-name-input').value = '';
+  document.getElementById('profile-name-input').placeholder = name;
+
+  // Afficher le bouton de mise à jour des anciennes opérations
+  const updateBtn = document.getElementById('update-all-ops-btn');
+  if (updateBtn) updateBtn.style.display = 'block';
 
   await logAudit('profile', `Changement de nom : ${name}`);
-  showToast('Nom mis à jour ✓', 'success');
+  showToast('Nom mis à jour ✓ — Mettez à jour vos anciennes opérations si besoin', 'success');
   loadMembers();
+};
+
+window.updateAllOpsName = async () => {
+  const name = currentUserData.displayName;
+  if (!name) { showToast('Enregistrez d\'abord votre nom', 'error'); return; }
+
+  const btn = document.getElementById('update-all-ops-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Mise à jour en cours...';
+
+  try {
+    // Trouver toutes les opérations de cet utilisateur
+    const myOps = allOps.filter(op => op.auteur === currentUser.email);
+    let count = 0;
+
+    for (const op of myOps) {
+      if (op.auteurNom !== name) {
+        await updateDoc(doc(db, 'operations', op.id), { auteurNom: name });
+        count++;
+      }
+    }
+
+    await logAudit('profile', `Mise à jour du nom sur ${count} opération(s)`);
+    showToast(`✓ ${count} opération(s) mise(s) à jour`, 'success');
+    btn.style.display = 'none';
+  } catch(e) {
+    showToast('Erreur : ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Mettre à jour mon nom sur toutes mes anciennes opérations';
+  }
 };
 
 async function loadMembers() {

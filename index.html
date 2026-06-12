@@ -10,6 +10,12 @@
 <meta name="theme-color" content="#1a1a2e"/>
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 
 <style>
@@ -1879,18 +1885,56 @@ window.updateHATotal = () => {
 };
 
 // ── FILE ──
-window.handleFileSelect = (e) => {
+window.handleFileSelect = async (e) => {
   const files = Array.from(e.target.files);
   let errors = 0;
-  files.forEach(f => {
-    if (f.size > 8 * 1024 * 1024) { errors++; return; }
-    if (selectedFiles.find(sf => sf.name === f.name && sf.size === f.size)) return; // doublon
-    selectedFiles.push(f);
-  });
+
+  for (const f of files) {
+    if (f.size > 10 * 1024 * 1024) { errors++; continue; }
+    if (selectedFiles.find(sf => sf.name === f.name && sf.size === f.size)) continue;
+
+    if (f.type === 'application/pdf') {
+      // Convertir PDF en JPGs (une image par page)
+      showToast('Conversion PDF en cours...', 'success');
+      try {
+        const pages = await pdfToImages(f);
+        pages.forEach((imgFile, i) => selectedFiles.push(imgFile));
+        showToast(`PDF converti : ${pages.length} page(s) ✓`, 'success');
+      } catch(err) {
+        console.warn('PDF conversion failed:', err);
+        showToast('Erreur conversion PDF', 'error');
+      }
+    } else {
+      selectedFiles.push(f);
+    }
+  }
+
   if (errors > 0) showToast(`${errors} fichier(s) trop lourd(s) ignoré(s)`, 'error');
   document.getElementById('file-input').value = '';
   renderFilesList();
 };
+
+async function pdfToImages(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const images = [];
+  const baseName = file.name.replace('.pdf', '');
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    const imgFile = new File([blob], `${baseName}_page${i}.jpg`, { type: 'image/jpeg' });
+    images.push(imgFile);
+  }
+  return images;
+}
 
 function renderFilesList() {
   const html = selectedFiles.map((f, i) => `
@@ -2233,67 +2277,23 @@ window.showDetail = (id) => {
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
     const originalLink = f.link || '';
-    const isPdf = f.name?.toLowerCase().endsWith('.pdf') || originalLink.toLowerCase().includes('.pdf');
-    const label = filesToShow.length > 1 ? `Fichier ${i+1} — ${f.name || ''}` : (f.name || 'Justificatif');
-
-    if (isPdf && originalLink.includes('cloudinary')) {
-      // PDF : bouton aperçu (JPG) + bouton téléchargement
-      const previewLink = originalLink.replace('/upload/', '/upload/f_jpg,q_auto/').replace('.pdf', '.jpg');
-
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'display:flex;gap:8px;margin-bottom:4px';
-
-      const btnPreview = document.createElement('button');
-      btnPreview.className = 'btn-drive';
-      btnPreview.style.flex = '1';
-      btnPreview.innerHTML = `🖼️ Aperçu — ${label}`;
-      btnPreview.onclick = () => {
-        const tmp = document.createElement('a');
-        tmp.href = previewLink;
-        tmp.target = '_blank';
-        tmp.rel = 'noopener noreferrer';
-        document.body.appendChild(tmp);
-        tmp.click();
-        document.body.removeChild(tmp);
-      };
-
-      const btnDl = document.createElement('button');
-      btnDl.className = 'btn-drive';
-      btnDl.style.cssText = 'flex:0;padding:12px;white-space:nowrap';
-      btnDl.innerHTML = '⬇️ PDF';
-      btnDl.onclick = () => {
-        const tmp = document.createElement('a');
-        tmp.href = originalLink;
-        tmp.target = '_blank';
-        tmp.rel = 'noopener noreferrer';
-        tmp.download = f.name || 'justificatif.pdf';
-        document.body.appendChild(tmp);
-        tmp.click();
-        document.body.removeChild(tmp);
-      };
-
-      wrapper.appendChild(btnPreview);
-      wrapper.appendChild(btnDl);
-      actionsEl.appendChild(wrapper);
-    } else {
-      // Image ou autre fichier : bouton simple
-      a.href = originalLink;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.className = 'btn-drive';
-      a.innerHTML = `📁 ${label}`;
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        const tmp = document.createElement('a');
-        tmp.href = originalLink;
-        tmp.target = '_blank';
-        tmp.rel = 'noopener noreferrer';
-        document.body.appendChild(tmp);
-        tmp.click();
-        document.body.removeChild(tmp);
-      });
-      actionsEl.appendChild(a);
-    }
+    const label = filesToShow.length > 1 ? `Photo ${i+1} — ${f.name || ''}` : (f.name || 'Justificatif');
+    a.href = originalLink;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.className = 'btn-drive';
+    a.innerHTML = `📸 ${label}`;
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tmp = document.createElement('a');
+      tmp.href = originalLink;
+      tmp.target = '_blank';
+      tmp.rel = 'noopener noreferrer';
+      document.body.appendChild(tmp);
+      tmp.click();
+      document.body.removeChild(tmp);
+    });
+    actionsEl.appendChild(a);
   });
 
   // Edit button (all members can edit)

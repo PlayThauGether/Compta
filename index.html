@@ -2044,10 +2044,14 @@ async function submitHelloAsso() {
           fd.append('file', f);
           fd.append('upload_preset', 'ptg-compta');
           fd.append('folder', 'ptg-compta/helloasso');
-          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload', { method: 'POST', body: fd });
+          const isRaw = ['pdf','csv','xlsx','xls','doc','docx'].some(ext => f.name.toLowerCase().endsWith('.'+ext));
+          const endpoint = isRaw
+            ? 'https://api.cloudinary.com/v1_1/dq0l1eyqs/raw/upload'
+            : 'https://api.cloudinary.com/v1_1/dq0l1eyqs/image/upload';
+          const uploadRes = await fetch(endpoint, { method: 'POST', body: fd });
           if (uploadRes.ok) {
             const d = await uploadRes.json();
-            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name, isRaw });
           }
         } catch(e) { console.warn('Upload failed', e); }
       }
@@ -2141,10 +2145,15 @@ window.submitOperation = async () => {
           fd.append('file', f);
           fd.append('upload_preset', 'ptg-compta');
           fd.append('folder', 'ptg-compta');
-          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/auto/upload', { method: 'POST', body: fd });
+          // PDFs, CSVs et autres docs → endpoint 'raw', images → 'image'
+          const isRaw = ['pdf','csv','xlsx','xls','doc','docx'].some(ext => f.name.toLowerCase().endsWith('.'+ext));
+          const endpoint = isRaw
+            ? 'https://api.cloudinary.com/v1_1/dq0l1eyqs/raw/upload'
+            : 'https://api.cloudinary.com/v1_1/dq0l1eyqs/image/upload';
+          const uploadRes = await fetch(endpoint, { method: 'POST', body: fd });
           if (uploadRes.ok) {
             const d = await uploadRes.json();
-            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name, isRaw });
           }
         } catch(e) { console.warn('Upload failed for', f.name, e); }
       }
@@ -2229,14 +2238,7 @@ window.showDetail = (id) => {
 
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    // Pour les PDFs Cloudinary, corriger le type de ressource
-    let link = f.link || '';
-    if (link.includes('cloudinary')) {
-      if (f.name?.toLowerCase().endsWith('.pdf') || f.name?.toLowerCase().endsWith('.csv')) {
-        // PDFs et CSVs sont stockés en 'raw', pas en 'image'
-        link = link.replace('/image/upload/', '/raw/upload/').replace('/auto/upload/', '/raw/upload/');
-      }
-    }
+    const link = f.link || '';
     a.href = link;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';

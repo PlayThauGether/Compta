@@ -2240,11 +2240,7 @@ window.showDetail = (id) => {
 
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    // Forcer téléchargement pour PDFs/CSVs
-    let link = f.link || '';
-    if (link.includes('/raw/upload/') && !link.includes('fl_attachment')) {
-      link = link.replace('/raw/upload/', '/raw/upload/fl_attachment/');
-    }
+    const link = f.link || '';
     a.href = link;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
@@ -2252,7 +2248,15 @@ window.showDetail = (id) => {
     a.innerHTML = `📁 ${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}${f.name || 'Voir le justificatif'}`;
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      window.open(link, '_blank', 'noopener,noreferrer');
+      // Créer un lien temporaire et cliquer dessus pour contourner les blocages popup
+      const tmp = document.createElement('a');
+      tmp.href = link;
+      tmp.target = '_blank';
+      tmp.rel = 'noopener noreferrer';
+      tmp.download = f.name || '';
+      document.body.appendChild(tmp);
+      tmp.click();
+      document.body.removeChild(tmp);
     });
     actionsEl.appendChild(a);
   });

@@ -1893,15 +1893,17 @@ window.handleFileSelect = (e) => {
 };
 
 function renderFilesList() {
-  const list = document.getElementById('files-list');
-  if (!list) return;
-  list.innerHTML = selectedFiles.map((f, i) => `
+  const html = selectedFiles.map((f, i) => `
     <div class="upload-preview">
-      <span>${f.type.includes('pdf') ? '📄' : '🖼️'}</span>
+      <span>${f.type.includes('pdf') ? '📄' : f.name.match(/\.(csv|xlsx|xls|doc|docx)$/i) ? '📊' : '🖼️'}</span>
       <span class="upload-preview-name">${f.name}</span>
       <span style="font-size:11px;color:var(--text3);flex-shrink:0">${(f.size/1024).toFixed(0)} Ko</span>
       <button class="upload-remove" onclick="removeFile(${i})">✕</button>
     </div>`).join('');
+  const list = document.getElementById('files-list');
+  const listHa = document.getElementById('files-list-ha');
+  if (list) list.innerHTML = html;
+  if (listHa) listHa.innerHTML = html;
 }
 
 window.removeFile = (index) => {

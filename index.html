@@ -909,7 +909,7 @@
         <div class="solde-card main-card">
           <div class="solde-label">💵 Caisse actuelle</div>
           <div class="solde-amount neutral" id="solde-caisse">—</div>
-          <div class="solde-sub">Espèces disponibles</div>
+          <div class="solde-sub">Argent disponible</div>
         </div>
         <div class="solde-card">
           <div class="solde-label">📈 Entrées (mois)</div>
@@ -1073,11 +1073,70 @@
       </div>
 
       <div class="card">
+        <div class="card-title">🔁 Opérations récurrentes</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Configurez vos opérations mensuelles et enregistrez-les en un clic.</p>
+        <div id="recurrentes-list" style="margin-bottom:12px"></div>
+        <button class="btn-primary" style="width:100%" onclick="openModalRecurrente()">+ Ajouter une opération récurrente</button>
+      </div>
+
+      <div class="card">
         <div class="card-title">Journal d'audit</div>
         <div id="audit-list"></div>
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- MODAL RÉCURRENTE -->
+<div class="modal-overlay" id="modal-recurrente">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">🔁 Opération récurrente</div>
+      <button class="modal-close" onclick="closeModal('modal-recurrente')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="rec-type">
+        <option value="sortie">➖ Sortie</option>
+        <option value="entree">➕ Entrée</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="rec-desc" placeholder="ex: Cotisation Forfait Association"/>
+    </div>
+    <div class="form-group">
+      <label>Montant (€)</label>
+      <input type="number" id="rec-montant" min="0" step="0.01" placeholder="0,00"/>
+    </div>
+    <div class="form-group">
+      <label>Catégorie</label>
+      <select id="rec-cat">
+        <option value="">— Sélectionner —</option>
+        <optgroup label="Entrées">
+          <option value="Don">🎁 Don</option>
+          <option value="Adhésion">🪪 Adhésion</option>
+          <option value="Subvention">🏛️ Subvention</option>
+          <option value="Autre entrée">📦 Autre entrée</option>
+        </optgroup>
+        <optgroup label="Sorties">
+          <option value="Frais bancaire">🏦 Frais bancaire</option>
+          <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
+          <option value="Matériel">🎮 Matériel jeux</option>
+          <option value="Fournitures">🛒 Fournitures</option>
+          <option value="Local">🏠 Local</option>
+          <option value="Communication">📢 Communication</option>
+          <option value="Transport">🚗 Transport</option>
+          <option value="Autre sortie">📦 Autre sortie</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes (optionnel)</label>
+      <input type="text" id="rec-notes" placeholder="ex: Prélevé le 10 du mois"/>
+    </div>
+    <button class="btn-submit entree" onclick="saveRecurrente()" style="background:var(--purple);margin-top:8px">💾 Enregistrer</button>
   </div>
 </div>
 
@@ -2475,6 +2534,105 @@ window.deleteOperation = async (id) => {
   showToast('Opération supprimée', 'success');
 };
 
+// ── OPÉRATIONS RÉCURRENTES ──
+let recurrentesData = [];
+
+async function loadRecurrentes() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'recurrentes'));
+    recurrentesData = snap.exists() ? (snap.data().items || []) : [];
+  } catch(e) {
+    recurrentesData = [];
+  }
+  renderRecurrentesList();
+}
+
+async function saveRecurrentes() {
+  await setDoc(doc(db, 'config', 'recurrentes'), { items: recurrentesData });
+}
+
+function renderRecurrentesList() {
+  const el = document.getElementById('recurrentes-list');
+  if (!el) return;
+  if (recurrentesData.length === 0) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--text3)">Aucune opération récurrente</p>';
+    return;
+  }
+  el.innerHTML = recurrentesData.map((r, i) => `
+    <div class="member-item" style="margin-bottom:8px">
+      <div style="font-size:20px">${r.type === 'entree' ? '➕' : '➖'}</div>
+      <div class="member-info">
+        <div class="member-name">${r.desc}</div>
+        <div class="member-email">${r.cat || '—'} · ${r.notes || ''}</div>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${r.type === 'entree' ? 'var(--green)' : 'var(--red)'};margin-right:8px">
+        ${r.type === 'entree' ? '+' : '-'}${parseFloat(r.montant).toFixed(2).replace('.', ',')} €
+      </div>
+      <button class="btn-primary" onclick="enregistrerRecurrente(${i})" style="white-space:nowrap;font-size:12px;padding:6px 10px">
+        ✓ Ce mois
+      </button>
+      <button class="btn-danger" onclick="deleteRecurrente(${i})" style="margin-left:4px">✕</button>
+    </div>`).join('');
+}
+
+window.openModalRecurrente = () => {
+  document.getElementById('rec-desc').value = '';
+  document.getElementById('rec-montant').value = '';
+  document.getElementById('rec-cat').value = '';
+  document.getElementById('rec-notes').value = '';
+  document.getElementById('rec-type').value = 'sortie';
+  document.getElementById('modal-recurrente').classList.add('open');
+};
+
+window.saveRecurrente = async () => {
+  const desc = document.getElementById('rec-desc').value.trim();
+  const montant = parseFloat(document.getElementById('rec-montant').value);
+  const type = document.getElementById('rec-type').value;
+  const cat = document.getElementById('rec-cat').value;
+  const notes = document.getElementById('rec-notes').value.trim();
+
+  if (!desc || !montant || montant <= 0) { showToast('Remplissez description et montant', 'error'); return; }
+
+  recurrentesData.push({ desc, montant, type, cat, notes });
+  await saveRecurrentes();
+  closeModal('modal-recurrente');
+  renderRecurrentesList();
+  showToast('Opération récurrente ajoutée ✓', 'success');
+};
+
+window.deleteRecurrente = async (index) => {
+  if (!confirm(`Supprimer "${recurrentesData[index].desc}" ?`)) return;
+  recurrentesData.splice(index, 1);
+  await saveRecurrentes();
+  renderRecurrentesList();
+  showToast('Supprimée', 'success');
+};
+
+window.enregistrerRecurrente = async (index) => {
+  const r = recurrentesData[index];
+  const today = new Date().toISOString().split('T')[0];
+
+  const opData = {
+    type: r.type,
+    montant: r.montant,
+    description: r.desc,
+    date: new Date(),
+    categorie: r.cat || null,
+    notes: r.notes || null,
+    auteur: currentUser.email,
+    auteurNom: currentUserData.displayName || currentUser.email,
+    createdAt: serverTimestamp(),
+    driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
+    soiree: null, typeSoiree: null, lieu: null, nbInscrits: null,
+    pasDeDon: false, soireeAnnulee: false, donMode: null, donOrigine: null,
+    virementPar: null, dateMois: false, helloasso: false,
+  };
+
+  await addDoc(collection(db, 'operations'), opData);
+  await logAudit('add_operation', `[Récurrente] ${r.type} ${r.montant}€ — ${r.desc}`);
+  showToast(`✓ "${r.desc}" enregistrée pour ce mois !`, 'success');
+};
+
 // ── RÉCAP ANNUEL ──
 function renderRecapPage() {
   const listEl = document.getElementById('recap-years-list');
@@ -2741,6 +2899,7 @@ window.showPage = (page) => {
     loadMembers();
     loadAudit();
     renderConfigTags();
+    loadRecurrentes();
     // Remplir le profil
     const avatarEl = document.getElementById('admin-profile-avatar');
     if (currentUser.photoURL) avatarEl.innerHTML = `<img src="${currentUser.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`;

@@ -461,6 +461,16 @@
   }
 
   .upload-preview-name { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upload-preview-rename {
+    font-size: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 3px 6px;
+    width: 100%;
+    margin-top: 4px;
+  }
   .upload-remove { background: none; border: none; color: var(--red); cursor: pointer; font-size: 16px; }
 
   .checkbox-group {
@@ -1938,17 +1948,31 @@ async function pdfToImages(file) {
 
 function renderFilesList() {
   const html = selectedFiles.map((f, i) => `
-    <div class="upload-preview">
-      <span>${f.type.includes('pdf') ? '📄' : f.name.match(/\.(csv|xlsx|xls|doc|docx)$/i) ? '📊' : '🖼️'}</span>
-      <span class="upload-preview-name">${f.name}</span>
-      <span style="font-size:11px;color:var(--text3);flex-shrink:0">${(f.size/1024).toFixed(0)} Ko</span>
-      <button class="upload-remove" onclick="removeFile(${i})">✕</button>
+    <div class="upload-preview" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span>${f.type.includes('pdf') ? '📄' : f.name.match(/\.(csv|xlsx|xls|doc|docx)$/i) ? '📊' : '🖼️'}</span>
+        <span class="upload-preview-name">${f.name}</span>
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">${(f.size/1024).toFixed(0)} Ko</span>
+        <button class="upload-remove" onclick="removeFile(${i})">✕</button>
+      </div>
+      <input class="upload-preview-rename" type="text" placeholder="Renommer (optionnel)..."
+        value="" oninput="renameFile(${i}, this.value)"
+        onclick="event.stopPropagation()"/>
     </div>`).join('');
   const list = document.getElementById('files-list');
   const listHa = document.getElementById('files-list-ha');
   if (list) list.innerHTML = html;
   if (listHa) listHa.innerHTML = html;
 }
+
+window.renameFile = (index, newName) => {
+  if (!newName.trim()) return;
+  const f = selectedFiles[index];
+  const ext = f.name.includes('.') ? '.' + f.name.split('.').pop() : '';
+  const cleanName = newName.trim().replace(/[^a-zA-Z0-9À-ɏ _-]/g, '') + ext;
+  // Créer un nouveau File avec le nouveau nom
+  selectedFiles[index] = new File([f], cleanName, { type: f.type });
+};
 
 window.removeFile = (index) => {
   if (index === undefined) { selectedFiles = []; }

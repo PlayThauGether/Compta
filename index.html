@@ -2210,7 +2210,7 @@ window.showDetail = (id) => {
     ${op.pasDeDon && !op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
     ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
-    ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''};
+    ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''}
     <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${op.auteurNom || op.auteur}</span></div>
     ${op.notes ? `<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${op.notes}</span></div>` : ''}
     ${(op.driveFiles && op.driveFiles.length > 0)
@@ -2229,8 +2229,13 @@ window.showDetail = (id) => {
 
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    a.href = f.link;
+    // Pour les PDFs Cloudinary, forcer l'ouverture externe
+    const link = f.link && f.link.includes('cloudinary') && f.name?.toLowerCase().endsWith('.pdf')
+      ? f.link.replace('/upload/', '/upload/fl_attachment/')
+      : f.link;
+    a.href = link;
     a.target = '_blank';
+    a.rel = 'noopener noreferrer';
     a.className = 'btn-drive';
     a.innerHTML = `📁 ${filesToShow.length > 1 ? 'Fichier '+(i+1)+' — ' : ''}${f.name || 'Voir le justificatif'}`;
     actionsEl.appendChild(a);

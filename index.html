@@ -2232,7 +2232,11 @@ window.showDetail = (id) => {
 
   filesToShow.forEach((f, i) => {
     const a = document.createElement('a');
-    const link = f.link || '';
+    // Pour les PDFs Cloudinary : convertir en JPG pour l'affichage
+    let link = f.link || '';
+    if (link.includes('cloudinary') && (f.name?.toLowerCase().endsWith('.pdf') || link.includes('.pdf'))) {
+      link = link.replace('/upload/', '/upload/f_jpg,q_auto/').replace('.pdf', '.jpg');
+    }
     a.href = link;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';

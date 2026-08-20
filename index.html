@@ -318,6 +318,7 @@
   .op-dot.entree { background: var(--green); }
   .op-dot.sortie { background: var(--red); }
   .op-dot.virement { background: var(--orange); }
+  .op-dot.depot { background: var(--purple); }
 
   .op-info { flex: 1; min-width: 0; }
   .op-desc { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -551,6 +552,7 @@
   .config-add-row input { flex: 1; }
   .don-mode-btn.active-bancaire { background: var(--blue-dim); color: var(--blue); border-color: var(--blue); }
   .type-btn.active-helloasso { background: #1a3a1a; color: #4caf50; border-color: #4caf50; border: 1px solid; }
+  .type-btn.active-depot { background: #2a1a4a; color: #a078ff; border-color: #a078ff; border: 1px solid; }
 
   .helloasso-form { display: none; }
   .helloasso-form.visible { display: block; }
@@ -1153,6 +1155,7 @@
       <button class="type-btn" onclick="setType('sortie')" id="type-sortie">➖ Sortie</button>
       <button class="type-btn" onclick="setType('virement')" id="type-virement">🏦 Virement</button>
       <button class="type-btn" onclick="setType('helloasso')" id="type-helloasso">💚 HelloAsso</button>
+      <button class="type-btn" onclick="setType('depot')" id="type-depot">🏛️ Dépôt</button>
     </div>
 
     <!-- FORMULAIRE HELLOASSO -->
@@ -1328,6 +1331,28 @@
     </div>
 
     </div><!-- end standard-form -->
+
+    <!-- FORMULAIRE DÉPÔT -->
+    <div id="depot-form" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Montant (€)</label>
+          <input type="number" id="depot-montant" min="0" step="0.01" placeholder="0,00"/>
+        </div>
+        <div class="form-group">
+          <label>Date du dépôt</label>
+          <input type="date" id="depot-date"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Déposé par</label>
+        <input type="text" id="depot-par" placeholder="Prénom Nom..."/>
+      </div>
+      <div class="form-group">
+        <label>Notes (optionnel)</label>
+        <textarea id="depot-notes" placeholder="Infos complémentaires..."></textarea>
+      </div>
+    </div>
     <button class="btn-submit entree" id="submit-btn" onclick="submitOperation()">Enregistrer</button>
   </div>
 </div>
@@ -1463,9 +1488,9 @@ function initApp() {
   if (currentUser.photoURL) {
     avatarEl.innerHTML = `<img src="${currentUser.photoURL}" alt="avatar"/>`;
   } else {
-    avatarEl.textContent = (currentUser.displayName || currentUser.email)[0].toUpperCase();
+    avatarEl.textContent = (currentUserData.displayName || currentUser.displayName || currentUser.email)[0].toUpperCase();
   }
-  document.getElementById('user-name-top').textContent = currentUser.displayName || currentUser.email.split('@')[0];
+  document.getElementById('user-name-top').textContent = currentUserData.displayName || currentUser.displayName || currentUser.email.split('@')[0];
 
   // Show admin nav if admin
   if (currentUserData?.role === 'admin') {
@@ -1507,7 +1532,7 @@ function renderDashboard() {
     const m = op.montant || 0;
     if (op.type === 'entree') { caisse += m; }
     else if (op.type === 'sortie') { caisse -= m; }
-    // virement = neutre pour la caisse (trace uniquement)
+    // virement et dépôt = neutres pour la caisse (trace uniquement)
 
     if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
       if (op.type === 'entree') { entreesMois += m; nbEntrees++; }
@@ -1994,6 +2019,10 @@ window.openModal = (type) => {
   document.getElementById('ha-mois').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   document.getElementById('op-date-mois').checked = false;
   if (document.getElementById('op-preset')) document.getElementById('op-preset').value = '';
+  if (document.getElementById('depot-montant')) document.getElementById('depot-montant').value = '';
+  if (document.getElementById('depot-par')) document.getElementById('depot-par').value = '';
+  if (document.getElementById('depot-notes')) document.getElementById('depot-notes').value = '';
+  if (document.getElementById('depot-date')) document.getElementById('depot-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('op-date').style.display = 'block';
   document.getElementById('op-date-mois-input').style.display = 'none';
   populateSelects(); // Rafraîchit les listes soirées/lieux à chaque ouverture
@@ -2007,21 +2036,26 @@ window.closeModal = (id) => {
 window.setType = (type) => {
   currentType = type;
   const isHA = type === 'helloasso';
+  const isDepot = type === 'depot';
 
   // Boutons actifs
-  ['entree', 'sortie', 'virement', 'helloasso'].forEach(t => {
+  ['entree', 'sortie', 'virement', 'helloasso', 'depot'].forEach(t => {
     const btn = document.getElementById('type-' + t);
     if (btn) btn.className = 'type-btn' + (t === type ? ' active-' + t : '');
   });
 
   // Afficher/masquer les deux formulaires
-  document.getElementById('standard-form').style.display = isHA ? 'none' : 'block';
+  document.getElementById('standard-form').style.display = (isHA || isDepot) ? 'none' : 'block';
   document.getElementById('helloasso-form').style.display = isHA ? 'block' : 'none';
+  const depotFormEl = document.getElementById('depot-form');
+  if (depotFormEl) depotFormEl.style.display = isDepot ? 'block' : 'none';
 
   // Bouton submit
-  const submitType = isHA ? 'entree' : type;
-  document.getElementById('submit-btn').className = 'btn-submit ' + submitType;
+  const submitType = (isHA || isDepot) ? 'entree' : type;
+  document.getElementById('submit-btn').className = 'btn-submit ' + (isDepot ? 'virement' : submitType);
+  document.getElementById('submit-btn').style.background = isDepot ? 'var(--purple)' : '';
   document.getElementById('submit-btn').textContent = isHA ? '💚 Enregistrer le virement HelloAsso' :
+    isDepot ? '🏛️ Enregistrer le dépôt' :
     type === 'entree' ? "➕ Enregistrer l'entrée" :
     type === 'sortie' ? '➖ Enregistrer la sortie' : '🏦 Enregistrer le virement';
 
@@ -2035,6 +2069,7 @@ window.setType = (type) => {
 
   // Titre modal
   document.getElementById('modal-title').textContent = isHA ? '💚 Virement HelloAsso' :
+    isDepot ? '🏛️ Dépôt liquide à la banque' :
     type === 'entree' ? 'Nouvelle entrée' :
     type === 'sortie' ? 'Nouvelle sortie' : 'Virement caisse → banque';
 
@@ -2257,6 +2292,47 @@ window.toggleAutrePrecision = () => {
   if (!isAutre) document.getElementById('op-autre-precision').value = '';
 };
 
+// ── SUBMIT DÉPÔT ──
+async function submitDepot() {
+  const montant = parseFloat(document.getElementById('depot-montant').value);
+  const date = document.getElementById('depot-date').value;
+  const par = document.getElementById('depot-par').value.trim();
+  const notes = document.getElementById('depot-notes').value.trim();
+
+  if (!montant || montant <= 0) { showToast('Montant invalide', 'error'); return; }
+  if (!date) { showToast('Date obligatoire', 'error'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enregistrement...';
+
+  try {
+    const opData = {
+      type: 'depot',
+      montant,
+      description: `Dépôt bancaire${par ? ' — ' + par : ''}`,
+      date: new Date(date),
+      categorie: 'Dépôt bancaire',
+      virementPar: par || null,
+      notes: notes || null,
+      auteur: currentUser.email,
+      auteurNom: currentUserData.displayName || currentUser.displayName || currentUser.email,
+      createdAt: serverTimestamp(),
+      driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
+    };
+
+    await addDoc(collection(db, 'operations'), opData);
+    await logAudit('add_operation', `Dépôt bancaire ${montant}€${par ? ' par ' + par : ''}`);
+    closeModal('modal-op');
+    showToast('🏛️ Dépôt enregistré ✓', 'success');
+  } catch(e) {
+    showToast('Erreur : ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🏛️ Enregistrer le dépôt';
+  }
+}
+
 // ── SUBMIT HELLOASSO ──
 async function submitHelloAsso() {
   const mois = document.getElementById('ha-mois').value;
@@ -2291,7 +2367,7 @@ async function submitHelloAsso() {
       donOrigine: 'HelloAsso',
       notes: notes || null,
       auteur: currentUser.email,
-      auteurNom: currentUser.displayName || currentUser.email,
+      auteurNom: currentUserData.displayName || currentUser.displayName || currentUser.email,
       createdAt: serverTimestamp(),
       driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
     };
@@ -2349,6 +2425,12 @@ window.submitOperation = async () => {
     : document.getElementById('op-date').value;
   const date = dateRaw;
 
+  // ── CAS DÉPÔT ──
+  if (currentType === 'depot') {
+    await submitDepot();
+    return;
+  }
+
   // ── CAS HELLOASSO ──
   if (currentType === 'helloasso') {
     await submitHelloAsso();
@@ -2385,7 +2467,7 @@ window.submitOperation = async () => {
       virementPar: currentType === 'virement' ? (document.getElementById('op-virement-par').value.trim() || null) : null,
       notes: document.getElementById('op-notes').value.trim() || null,
       auteur: currentUser.email,
-      auteurNom: currentUser.displayName || currentUser.email,
+      auteurNom: currentUserData.displayName || currentUser.displayName || currentUser.email,
       createdAt: serverTimestamp(),
       driveFileId: null,
       driveLink: null,
@@ -2453,7 +2535,7 @@ window.showDetail = (id) => {
   if (!op) return;
 
   const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
-  const typeLabel = { entree: '➕ Entrée', sortie: '➖ Sortie', virement: '🏦 Virement caisse → banque' }[op.type];
+  const typeLabel = { entree: '➕ Entrée', sortie: '➖ Sortie', virement: '🏦 Virement caisse → banque', depot: '🏛️ Dépôt bancaire' }[op.type];
 
   document.getElementById('detail-title').textContent = typeLabel;
   document.getElementById('detail-content').innerHTML = `
@@ -2735,7 +2817,10 @@ function renderRecapPage() {
               <div style="font-family:'JetBrains Mono',monospace;color:${solde >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${fmt(solde)}</div>
             </div>
           </div>
-          <button class="btn-primary" onclick="downloadRecap(${year})">⬇️ Télécharger</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn-primary" onclick="downloadRecap(${year})">⬇️ HTML</button>
+            <button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="downloadRecapCSV(${year})">⬇️ CSV</button>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -2845,6 +2930,86 @@ ${monthsHTML}
   showToast(`📄 Bilan ${year} téléchargé ✓`, 'success');
 };
 
+// ── EXPORT CSV RÉCAP ANNUEL ──
+window.downloadRecapCSV = (year) => {
+  const ops = allOps.filter(op => {
+    const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+    return d.getFullYear() === year;
+  }).sort((a, b) => {
+    const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+    const db = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+    return da - db;
+  });
+
+  if (ops.length === 0) { showToast('Aucune donnée', 'error'); return; }
+
+  const header = [
+    'Date', 'Type', 'Montant (€)', 'Description', 'Catégorie',
+    'Type soirée', 'Lieu', 'Nb inscrits', 'Mode don', 'Origine don',
+    'HelloAsso Adhésions', 'HelloAsso Dons', 'Déposé/Viré par',
+    'Auteur', 'Notes', 'Au mois', 'Justificatifs'
+  ];
+
+  const rows = ops.map(op => {
+    const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+    const sign = op.type === 'entree' ? '+' : (op.type === 'virement' || op.type === 'depot') ? '→' : '-';
+    const typeLabel = { entree: 'Entrée', sortie: 'Sortie', virement: 'Virement', depot: 'Dépôt', helloasso: 'HelloAsso' }[op.type] || op.type;
+
+    return [
+      d.toLocaleDateString('fr-FR'),
+      typeLabel,
+      sign + (op.montant || 0).toFixed(2).replace('.', ','),
+      op.description || '',
+      op.categorie || '',
+      op.typeSoiree || '',
+      op.lieu || '',
+      op.nbInscrits || '',
+      op.donMode || '',
+      op.donOrigine || '',
+      op.haAdhesions ? (op.haAdhesions).toFixed(2).replace('.', ',') : '',
+      op.haDons ? (op.haDons).toFixed(2).replace('.', ',') : '',
+      op.virementPar || '',
+      op.auteurNom || op.auteur || '',
+      op.notes || '',
+      op.dateMois ? 'Oui' : 'Non',
+      op.driveFiles ? op.driveFiles.map(f => f.link).join(' | ') : (op.driveLink || '')
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';');
+  });
+
+  // Totaux en bas
+  const entrees = ops.filter(o => o.type === 'entree').reduce((s, o) => s + (o.montant || 0), 0);
+  const sorties = ops.filter(o => o.type === 'sortie').reduce((s, o) => s + (o.montant || 0), 0);
+  const virements = ops.filter(o => o.type === 'virement').reduce((s, o) => s + (o.montant || 0), 0);
+  const depots = ops.filter(o => o.type === 'depot').reduce((s, o) => s + (o.montant || 0), 0);
+
+  const totaux = [
+    '',
+    'TOTAUX',
+    '',
+    '',
+    '',
+    '', '', '', '', '', '', '', '', '', '', '', ''
+  ];
+  totaux[2] = `"ENTRÉES: +${entrees.toFixed(2).replace('.', ',')} € | SORTIES: -${sorties.toFixed(2).replace('.', ',')} € | SOLDE: ${(entrees-sorties).toFixed(2).replace('.', ',')} € | VIREMENTS: →${virements.toFixed(2).replace('.', ',')} € | DÉPÔTS: →${depots.toFixed(2).replace('.', ',')} €"`;
+
+  const csv = '﻿' + [
+    header.map(h => `"${h}"`).join(';'),
+    ...rows,
+    '',
+    totaux.map(v => `"${v}"`).join(';')
+  ].join('
+');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PTG_Bilan_${year}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`📊 Bilan CSV ${year} téléchargé ✓`, 'success');
+};
+
 // ── EXPORT CSV ──
 window.exportCSV = () => {
   if (allOps.length === 0) { showToast('Aucune donnée à exporter', 'error'); return; }
@@ -2885,7 +3050,7 @@ function fmt(amount) {
 
 function opItemHTML(op) {
   const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
-  const sign = op.type === 'entree' ? '+' : op.type === 'virement' ? '' : '-';
+  const sign = op.type === 'entree' ? '+' : (op.type === 'virement' || op.type === 'depot') ? '' : '-';
 
   // Construire le titre principal selon le type
   let mainLabel = '';
@@ -2905,6 +3070,9 @@ function opItemHTML(op) {
   } else if (op.type === 'virement') {
     const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     mainLabel = dateStr + ' — Virement bancaire' + (op.virementPar ? ' · ' + op.virementPar : '');
+  } else if (op.type === 'depot') {
+    const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    mainLabel = dateStr + ' — 🏛️ Dépôt bancaire' + (op.virementPar ? ' · ' + op.virementPar : '');
   }
 
   const subLabel = op.description;
@@ -2917,7 +3085,7 @@ function opItemHTML(op) {
         <div class="op-meta">${subLabel}${op.auteurNom || op.auteur ? ' · ' + (op.auteurNom || op.auteur) : ''}</div>
       </div>
       ${(op.driveFiles?.length > 0 || op.driveLink) ? `<span class="op-attach">📎${op.driveFiles?.length > 1 ? op.driveFiles.length : ''}</span>` : ''}
-      <div class="op-amount ${op.type}">${sign}${fmt(op.montant)}</div>
+      <div class="op-amount ${op.type === 'depot' ? 'virement' : op.type}">${sign}${fmt(op.montant)}</div>
     </div>`;
 }
 

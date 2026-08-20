@@ -2992,12 +2992,8 @@ window.downloadRecapCSV = (year) => {
   ];
   totaux[2] = "ENTRÉES: +" + entrees.toFixed(2).replace(".", ",") + " € | SORTIES: -" + sorties.toFixed(2).replace(".", ",") + " € | SOLDE: " + (entrees-sorties).toFixed(2).replace(".", ",") + " € | VIREMENTS: →" + virements.toFixed(2).replace(".", ",") + " € | DÉPÔTS: →" + depots.toFixed(2).replace(".", ",") + " €";
 
-  const csv = '﻿' + [
-    header.map(h => `"${h}"`).join(';'),
-    ...rows,
-    '',
-    totaux.map(v => '"' + v + '"').join(';')
-  ].join('
+  const csvLines = [header.map(h => '"' + h + '"').join(';')].concat(rows).concat(['', totaux.map(v => '"' + String(v) + '"').join(';')]);
+  const csv = '\uFEFF' + csvLines.join('\n');
 ');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

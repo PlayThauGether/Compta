@@ -2994,7 +2994,6 @@ window.downloadRecapCSV = (year) => {
 
   const csvLines = [header.map(h => '"' + h + '"').join(';')].concat(rows).concat(['', totaux.map(v => '"' + String(v) + '"').join(';')]);
   const csv = '\uFEFF' + csvLines.join('\n');
-');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

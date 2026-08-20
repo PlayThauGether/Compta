@@ -1349,6 +1349,20 @@
         <input type="text" id="depot-par" placeholder="Prénom Nom..."/>
       </div>
       <div class="form-group">
+        <label>Justificatifs (ticket de dépôt...)</label>
+        <div style="display:flex;gap:8px">
+          <div class="upload-zone" style="flex:1" onclick="document.getElementById('file-input').click()">
+            <div class="upload-icon">📎</div>
+            <p style="font-size:12px">Fichier / Galerie<br><span style="font-size:10px">Image ou PDF</span></p>
+          </div>
+          <div class="upload-zone" style="flex:0;padding:16px 20px;text-align:center" onclick="document.getElementById('camera-input').click()">
+            <div class="upload-icon">📸</div>
+            <p style="font-size:12px">Caméra</p>
+          </div>
+        </div>
+        <div class="files-list" id="files-list-depot"></div>
+      </div>
+      <div class="form-group">
         <label>Notes (optionnel)</label>
         <textarea id="depot-notes" placeholder="Infos complémentaires..."></textarea>
       </div>
@@ -2020,6 +2034,8 @@ window.openModal = (type) => {
   document.getElementById('op-date-mois').checked = false;
   if (document.getElementById('op-preset')) document.getElementById('op-preset').value = '';
   if (document.getElementById('depot-montant')) document.getElementById('depot-montant').value = '';
+  const depotFilesList = document.getElementById('files-list-depot');
+  if (depotFilesList) depotFilesList.innerHTML = '';
   if (document.getElementById('depot-par')) document.getElementById('depot-par').value = '';
   if (document.getElementById('depot-notes')) document.getElementById('depot-notes').value = '';
   if (document.getElementById('depot-date')) document.getElementById('depot-date').value = new Date().toISOString().split('T')[0];
@@ -2189,8 +2205,10 @@ function renderFilesList() {
     </div>`).join('');
   const list = document.getElementById('files-list');
   const listHa = document.getElementById('files-list-ha');
+  const listDepot = document.getElementById('files-list-depot');
   if (list) list.innerHTML = html;
   if (listHa) listHa.innerHTML = html;
+  if (listDepot) listDepot.innerHTML = html;
 }
 
 window.renameFile = (index, newName) => {
@@ -2310,7 +2328,7 @@ async function submitDepot() {
     const opData = {
       type: 'depot',
       montant,
-      description: `Dépôt bancaire${par ? ' — ' + par : ''}`,
+      description: 'Dépôt bancaire' + (par ? ' — ' + par : ''),
       date: new Date(date),
       categorie: 'Dépôt bancaire',
       virementPar: par || null,
@@ -2320,6 +2338,32 @@ async function submitDepot() {
       createdAt: serverTimestamp(),
       driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
     };
+
+    // Upload fichiers si présents
+    if (selectedFiles.length > 0) {
+      btn.innerHTML = '<span class="spinner"></span> Upload ' + selectedFiles.length + ' fichier(s)...';
+      const uploadedFiles = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const f = selectedFiles[i];
+        try {
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('upload_preset', 'ptg-compta');
+          fd.append('folder', 'ptg-compta/depots');
+          const uploadRes = await fetch('https://api.cloudinary.com/v1_1/dq0l1eyqs/image/upload', { method: 'POST', body: fd });
+          if (uploadRes.ok) {
+            const d = await uploadRes.json();
+            uploadedFiles.push({ fileId: d.public_id, link: d.secure_url, name: f.name });
+          }
+        } catch(e) { console.warn('Upload failed', e); }
+      }
+      if (uploadedFiles.length > 0) {
+        opData.driveFiles = uploadedFiles;
+        opData.driveFileId = uploadedFiles[0].fileId;
+        opData.driveLink = uploadedFiles[0].link;
+        opData.driveFileName = uploadedFiles[0].name;
+      }
+    }
 
     await addDoc(collection(db, 'operations'), opData);
     await logAudit('add_operation', `Dépôt bancaire ${montant}€${par ? ' par ' + par : ''}`);

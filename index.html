@@ -2996,7 +2996,7 @@ window.downloadRecapCSV = (year) => {
     header.map(h => `"${h}"`).join(';'),
     ...rows,
     '',
-    totaux.map(v => `"${v}"`).join(';')
+    totaux.map(v => '"' + v + '"').join(';')
   ].join('
 ');
 

@@ -2883,6 +2883,7 @@ window.downloadRecap = (year) => {
   const entrees = ops.filter(o => o.type === 'entree').reduce((s, o) => s + (o.montant || 0), 0);
   const sorties = ops.filter(o => o.type === 'sortie').reduce((s, o) => s + (o.montant || 0), 0);
   const virements = ops.filter(o => o.type === 'virement').reduce((s, o) => s + (o.montant || 0), 0);
+  const depots = ops.filter(o => o.type === 'depot').reduce((s, o) => s + (o.montant || 0), 0);
   const solde = entrees - sorties;
 
   // Grouper par mois
@@ -2894,8 +2895,8 @@ window.downloadRecap = (year) => {
     months[key].push(op);
   });
 
-  const typeLabel = { entree: 'Entrée', sortie: 'Sortie', virement: 'Virement' };
-  const typeColor = { entree: '#2ecc8a', sortie: '#e05555', virement: '#888' };
+  const typeLabel = { entree: 'Entrée', sortie: 'Sortie', virement: 'Virement', depot: 'Dépôt liquide', helloasso: 'HelloAsso' };
+  const typeColor = { entree: '#2ecc8a', sortie: '#e05555', virement: '#888', depot: '#a078ff', helloasso: '#4caf50' };
 
   const monthsHTML = Object.entries(months).map(([month, mops]) => `
     <div class="month-block">
@@ -2905,7 +2906,7 @@ window.downloadRecap = (year) => {
         <tbody>
           ${mops.map(op => {
             const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
-            const sign = op.type === 'entree' ? '+' : op.type === 'virement' ? '→' : '-';
+            const sign = op.type === 'entree' ? '+' : (op.type === 'virement' || op.type === 'depot') ? '→' : '-';
             const extra = op.helloasso ? ` (HelloAsso — Adhés: ${fmt(op.haAdhesions||0)}, Dons: ${fmt(op.haDons||0)})` :
               op.typeSoiree ? ` — ${op.typeSoiree}${op.lieu ? ' '+op.lieu : ''}` : '';
             return `<tr>
@@ -2954,6 +2955,7 @@ window.downloadRecap = (year) => {
   <div class="summary-box"><div class="summary-label">Total entrées</div><div class="summary-value green">+${fmt(entrees)}</div></div>
   <div class="summary-box"><div class="summary-label">Total sorties</div><div class="summary-value red">-${fmt(sorties)}</div></div>
   <div class="summary-box"><div class="summary-label">Virements banque</div><div class="summary-value grey">→${fmt(virements)}</div></div>
+  <div class="summary-box"><div class="summary-label">Dépôts liquide</div><div class="summary-value" style="color:#a078ff">→${fmt(depots)}</div></div>
   <div class="summary-box"><div class="summary-label">Solde net</div><div class="summary-value ${solde >= 0 ? 'green' : 'red'}">${solde >= 0 ? '+' : ''}${fmt(solde)}</div></div>
 </div>
 

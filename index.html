@@ -2990,7 +2990,7 @@ window.downloadRecapCSV = (year) => {
     '',
     '', '', '', '', '', '', '', '', '', '', '', ''
   ];
-  totaux[2] = `"ENTRÉES: +${entrees.toFixed(2).replace('.', ',')} € | SORTIES: -${sorties.toFixed(2).replace('.', ',')} € | SOLDE: ${(entrees-sorties).toFixed(2).replace('.', ',')} € | VIREMENTS: →${virements.toFixed(2).replace('.', ',')} € | DÉPÔTS: →${depots.toFixed(2).replace('.', ',')} €"`;
+  totaux[2] = "ENTRÉES: +" + entrees.toFixed(2).replace(".", ",") + " € | SORTIES: -" + sorties.toFixed(2).replace(".", ",") + " € | SOLDE: " + (entrees-sorties).toFixed(2).replace(".", ",") + " € | VIREMENTS: →" + virements.toFixed(2).replace(".", ",") + " € | DÉPÔTS: →" + depots.toFixed(2).replace(".", ",") + " €";
 
   const csv = '﻿' + [
     header.map(h => `"${h}"`).join(';'),

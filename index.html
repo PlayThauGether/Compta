@@ -662,6 +662,24 @@
   .detail-row:last-child { border-bottom: none; }
   .detail-key { color: var(--text3); }
   .detail-val { font-weight: 500; text-align: right; max-width: 60%; word-break: break-word; }
+  .detail-block { padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .detail-block .detail-key { margin-bottom: 8px; }
+  .detail-notes { white-space: pre-wrap; text-align: left; line-height: 1.55; color: var(--text); background: var(--bg3); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 13px; }
+  .ticket-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ticket-table td { padding: 5px 0; border-bottom: 1px dashed var(--border); vertical-align: top; }
+  .ticket-table td.amt { text-align: right; font-family: 'JetBrains Mono', monospace; white-space: nowrap; padding-left: 10px; }
+  .ticket-table td.cat { color: var(--text3); font-size: 11px; padding-left: 8px; white-space: nowrap; }
+  .ticket-group { margin-top: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); font-weight: 600; }
+  .ticket-total { display: flex; justify-content: space-between; margin-top: 8px; font-weight: 600; font-size: 13px; }
+  .ligne-item { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr 96px 32px; gap: 6px; }
+  .ligne-item input, .ligne-item select { padding: 8px 10px; font-size: 13px; background: var(--bg2); }
+  .ligne-item .ligne-row2 { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ligne-del { background: none; border: none; color: var(--red); font-size: 18px; cursor: pointer; }
+  .ligne-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .ligne-btn { background: var(--bg3); border: 1px dashed var(--border); color: var(--text2); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .stats-period { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .stats-period select, .stats-period input { width: auto; padding: 9px 12px; font-size: 14px; }
+  .stats-period .period-label { font-size: 12px; color: var(--text3); width: 100%; }
 
   .btn-drive {
     display: flex;
@@ -966,6 +984,15 @@
 
     <!-- STATS -->
     <div class="page" id="page-stats">
+      <div class="stats-period">
+        <select id="stats-period" onchange="onStatsPeriodChange()"></select>
+        <span id="stats-custom" style="display:none;gap:8px;align-items:center">
+          <input type="date" id="stats-from" onchange="renderStats()"/>
+          <span style="color:var(--text3)">au</span>
+          <input type="date" id="stats-to" onchange="renderStats()"/>
+        </span>
+        <div class="period-label" id="stats-period-label"></div>
+      </div>
       <div class="stats-grid" id="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Total entrées</div>
@@ -1127,6 +1154,7 @@
           <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
           <option value="Matériel">🎮 Matériel jeux</option>
           <option value="Fournitures">🛒 Fournitures</option>
+          <option value="Achats multiples">🧾 Achats multiples</option>
           <option value="Local">🏠 Local</option>
           <option value="Communication">📢 Communication</option>
           <option value="Transport">🚗 Transport</option>
@@ -1196,7 +1224,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Montant (€)</label>
-        <input type="number" id="op-montant" min="0" step="0.01" placeholder="0,00"/>
+        <input type="number" id="op-montant" min="0" step="0.01" placeholder="0,00" oninput="updateLignesTotal()"/>
       </div>
       <div class="form-group">
         <label>Date</label>
@@ -1237,6 +1265,7 @@
           <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
           <option value="Matériel">🎮 Matériel jeux</option>
           <option value="Fournitures">🛒 Fournitures</option>
+          <option value="Achats multiples">🧾 Achats multiples</option>
           <option value="Local">🏠 Local</option>
           <option value="Communication">📢 Communication</option>
           <option value="Transport">🚗 Transport</option>
@@ -1325,9 +1354,18 @@
       <div class="files-list" id="files-list"></div>
     </div>
 
+    <div class="form-group" id="lignes-group" style="display:none">
+      <label>Détail du ticket (optionnel)</label>
+      <div id="lignes-list"></div>
+      <div class="ligne-actions">
+        <button type="button" class="ligne-btn" onclick="addLigne()">+ Ajouter un article</button>
+        <span id="lignes-total" style="font-size:12px;color:var(--text3)"></span>
+      </div>
+    </div>
+
     <div class="form-group">
       <label>Notes (optionnel)</label>
-      <textarea id="op-notes" placeholder="Infos complémentaires..."></textarea>
+      <textarea id="op-notes" placeholder="Infos complémentaires... (Entrée pour aller à la ligne)"></textarea>
     </div>
 
     </div><!-- end standard-form -->
@@ -1620,13 +1658,168 @@ window.setFilter = (type, btn) => {
   filterOps();
 };
 
+// ── AFFICHAGE AUTEUR ──
+const ORG_NAME = "Play Thau'Gether";
+
+function escHTML(v) {
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Notes : garde les retours à la ligne ; anciennes notes sur une seule ligne → coupées sur " - "
+function formatNotes(txt) {
+  let t = String(txt || '');
+  if (!t.includes('\n')) t = t.replace(/\s+-\s+(?=\S)/g, '\n- ').replace(/\s*:\s*\n- /g, ' :\n- ');
+  return escHTML(t);
+}
+
+// ── DÉTAIL DU TICKET (lignes) ──
+const LIGNE_CATS = ['Nourriture/Boisson','Matériel','Fournitures','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
+let lignes = [];
+
+function lignesTotal() {
+  return lignes.reduce((s, l) => s + (parseFloat(String(l.montant).replace(',', '.')) || 0), 0);
+}
+
+function renderLignes() {
+  const el = document.getElementById('lignes-list');
+  if (!el) return;
+  el.innerHTML = lignes.map((l, i) => `
+    <div class="ligne-item">
+      <input type="text" placeholder="Article (ex: Cape rouge -60%)" value="${escHTML(l.article)}" oninput="updateLigne(${i},'article',this.value)"/>
+      <input type="number" step="0.01" min="0" placeholder="0,00 €" value="${escHTML(l.montant)}" oninput="updateLigne(${i},'montant',this.value)"/>
+      <button type="button" class="ligne-del" onclick="removeLigne(${i})" title="Supprimer">✕</button>
+      <div class="ligne-row2">
+        <select onchange="updateLigne(${i},'categorie',this.value)">
+          <option value="">Catégorie…</option>
+          ${LIGNE_CATS.map(c => `<option value="${c}" ${l.categorie === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+        <input type="text" placeholder="Pour (ex: Blind Test 04/10)" value="${escHTML(l.usage)}" oninput="updateLigne(${i},'usage',this.value)"/>
+      </div>
+    </div>`).join('');
+  updateLignesTotal();
+}
+
+window.updateLignesTotal = updateLignesTotal;
+function updateLignesTotal() {
+  const el = document.getElementById('lignes-total');
+  if (!el) return;
+  if (lignes.length === 0) { el.innerHTML = ''; return; }
+  const tot = lignesTotal();
+  const montant = parseFloat(document.getElementById('op-montant').value) || 0;
+  const ecart = Math.abs(tot - montant) > 0.005;
+  el.innerHTML = `Total articles : <b style="color:var(--text)">${fmt(tot)}</b>` +
+    (ecart ? ` · <a href="#" style="color:var(--orange)" onclick="event.preventDefault();useLignesTotal()">mettre ce total comme montant</a>` : ' ✓');
+}
+
+window.addLigne = () => { lignes.push({ article: '', montant: '', categorie: '', usage: '' }); renderLignes(); };
+window.removeLigne = (i) => { lignes.splice(i, 1); renderLignes(); };
+window.updateLigne = (i, k, v) => { if (lignes[i]) { lignes[i][k] = v; updateLignesTotal(); } };
+window.useLignesTotal = () => {
+  document.getElementById('op-montant').value = lignesTotal().toFixed(2);
+  updateLignesTotal();
+};
+
+function cleanLignes() {
+  return lignes
+    .map(l => ({
+      article: String(l.article || '').trim(),
+      montant: parseFloat(String(l.montant).replace(',', '.')) || 0,
+      categorie: l.categorie || null,
+      usage: String(l.usage || '').trim() || null
+    }))
+    .filter(l => l.article || l.montant);
+}
+
+function renderTicketHTML(op) {
+  if (!op.lignes || op.lignes.length === 0) return '';
+  const groups = {};
+  op.lignes.forEach(l => { const k = l.usage || ''; (groups[k] = groups[k] || []).push(l); });
+  const keys = Object.keys(groups);
+  const tot = op.lignes.reduce((s, l) => s + (l.montant || 0), 0);
+  const ecart = Math.abs(tot - (op.montant || 0)) > 0.005;
+  return `<div class="detail-block">
+    <div class="detail-key">Détail du ticket</div>
+    ${keys.map(k => `
+      ${(keys.length > 1 || k) ? `<div class="ticket-group">${k ? 'Pour : ' + escHTML(k) : 'Autres'}</div>` : ''}
+      <table class="ticket-table">
+        ${groups[k].map(l => `<tr><td>${escHTML(l.article)}</td><td class="cat">${escHTML(l.categorie || '')}</td><td class="amt">${fmt(l.montant || 0)}</td></tr>`).join('')}
+      </table>`).join('')}
+    <div class="ticket-total"><span>Total articles</span><span style="font-family:'JetBrains Mono',monospace;color:${ecart ? 'var(--orange)' : 'var(--text)'}">${fmt(tot)}${ecart ? ' (≠ ' + fmt(op.montant) + ')' : ''}</span></div>
+  </div>`;
+}
+
+// ── STATS : période ──
+function opDate(op) { return op.date?.toDate ? op.date.toDate() : new Date(op.date); }
+
+function populateStatsPeriod() {
+  const sel = document.getElementById('stats-period');
+  if (!sel) return;
+  const prev = sel.value;
+  const exos = [...new Set(allOps.map(exerciceOf))].sort((a, b) => b - a);
+  const now = new Date();
+  const curExo = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  if (!exos.includes(curExo)) exos.unshift(curExo);
+  sel.innerHTML =
+    `<option value="all">Toute la période</option>` +
+    exos.map(y => `<option value="exo-${y}">Exercice ${exerciceLabel(y)}</option>`).join('') +
+    `<option value="month">Mois en cours</option>` +
+    `<option value="custom">Période personnalisée…</option>`;
+  sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
+}
+
+window.onStatsPeriodChange = () => {
+  const v = document.getElementById('stats-period').value;
+  const custom = document.getElementById('stats-custom');
+  custom.style.display = v === 'custom' ? 'inline-flex' : 'none';
+  if (v === 'custom') {
+    const f = document.getElementById('stats-from'), t = document.getElementById('stats-to');
+    const now = new Date();
+    const y = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+    if (!f.value) f.value = `${y}-09-01`;
+    if (!t.value) t.value = now.toISOString().split('T')[0];
+  }
+  renderStats();
+};
+
+function getStatsRange() {
+  const v = document.getElementById('stats-period')?.value || 'all';
+  const fmtD = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  if (v.startsWith('exo-')) {
+    const y = +v.slice(4);
+    return { from: new Date(y, 8, 1), to: new Date(y + 1, 7, 31, 23, 59, 59, 999), label: exercicePeriode(y).replace(/^du/, 'Du'), limitMonths: false };
+  }
+  if (v === 'month') {
+    const n = new Date();
+    const from = new Date(n.getFullYear(), n.getMonth(), 1);
+    const to = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { from, to, label: n.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }), limitMonths: false };
+  }
+  if (v === 'custom') {
+    const fv = document.getElementById('stats-from').value, tv = document.getElementById('stats-to').value;
+    const from = fv ? new Date(fv + 'T00:00:00') : null;
+    const to = tv ? new Date(tv + 'T23:59:59.999') : null;
+    const label = (from ? 'Du ' + fmtD(from) : 'Depuis le début') + (to ? ' au ' + fmtD(to) : " jusqu'à aujourd'hui");
+    return { from, to, label, limitMonths: false };
+  }
+  return { from: null, to: null, label: 'Toutes les opérations enregistrées', limitMonths: true };
+}
+
 // ── STATS ──
 function renderStats() {
+  populateStatsPeriod();
+  const range = getStatsRange();
+  const labelEl = document.getElementById('stats-period-label');
+  if (labelEl) labelEl.textContent = range.label;
+  const ops = allOps.filter(op => {
+    const d = opDate(op);
+    return (!range.from || d >= range.from) && (!range.to || d <= range.to);
+  });
+
   let totalE = 0, totalS = 0, totalV = 0;
   const catMap = {};
   const monthMap = {};
 
-  allOps.forEach(op => {
+  ops.forEach(op => {
     const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
     const mKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     const mLabel = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
@@ -1638,7 +1831,18 @@ function renderStats() {
       totalS += op.montant;
       monthMap[mKey].sortie += op.montant;
       const cat = op.categorie || 'Non catégorisé';
-      catMap[cat] = (catMap[cat] || 0) + op.montant;
+      if (op.lignes && op.lignes.some(l => l.categorie)) {
+        // Ticket détaillé : on répartit chaque article dans sa catégorie
+        let reste = op.montant;
+        op.lignes.forEach(l => {
+          const c = l.categorie || cat;
+          catMap[c] = (catMap[c] || 0) + (l.montant || 0);
+          reste -= (l.montant || 0);
+        });
+        if (Math.abs(reste) > 0.005) catMap[cat] = (catMap[cat] || 0) + reste;
+      } else {
+        catMap[cat] = (catMap[cat] || 0) + op.montant;
+      }
     }
     else if (op.type === 'virement') totalV += op.montant; // juste pour info
   });
@@ -1646,7 +1850,7 @@ function renderStats() {
   document.getElementById('stat-total-entrees').textContent = fmt(totalE);
   document.getElementById('stat-total-sorties').textContent = fmt(totalS);
   document.getElementById('stat-total-virements').textContent = fmt(totalV);
-  document.getElementById('stat-nb-ops').textContent = allOps.length;
+  document.getElementById('stat-nb-ops').textContent = ops.length;
 
   // Cat chart
   const catEl = document.getElementById('cat-chart');
@@ -1663,7 +1867,8 @@ function renderStats() {
 
   // Monthly chart
   const monthEl = document.getElementById('monthly-chart');
-  const monthEntries = Object.entries(monthMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-6);
+  const monthEntriesAll = Object.entries(monthMap).sort((a, b) => a[0].localeCompare(b[0]));
+  const monthEntries = range.limitMonths ? monthEntriesAll.slice(-12) : monthEntriesAll;
   const maxMonth = Math.max(...monthEntries.map(([, v]) => Math.max(v.entree, v.sortie)), 1);
   monthEl.innerHTML = monthEntries.length === 0
     ? '<p style="color:var(--text3);font-size:13px">Aucune donnée</p>'
@@ -1678,7 +1883,7 @@ function renderStats() {
       </div>`).join('');
 
   // ── STATS SOIRÉES ──
-  const entrees = allOps.filter(op => op.type === 'entree');
+  const entrees = ops.filter(op => op.type === 'entree');
 
   // Par type de soirée
   const typeMap = {};
@@ -2024,6 +2229,8 @@ window.openModal = (type) => {
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   selectedFiles = [];
   renderFilesList();
+  lignes = [];
+  renderLignes();
   // Reset HelloAsso
   document.getElementById('ha-adhesions').value = '';
   document.getElementById('ha-dons').value = '';
@@ -2081,6 +2288,7 @@ window.setType = (type) => {
     document.getElementById('soiree-group').style.display = type === 'virement' ? 'none' : 'block';
     document.getElementById('entree-extra-group').style.display = type === 'entree' ? 'block' : 'none';
     document.getElementById('virement-par-group').style.display = type === 'virement' ? 'block' : 'none';
+    document.getElementById('lignes-group').style.display = type === 'sortie' ? 'block' : 'none';
   }
 
   // Titre modal
@@ -2334,7 +2542,7 @@ async function submitDepot() {
       virementPar: par || null,
       notes: notes || null,
       auteur: currentUser.email,
-      auteurNom: currentUserData.displayName || currentUser.displayName || currentUser.email,
+      auteurNom: ORG_NAME,
       createdAt: serverTimestamp(),
       driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
     };
@@ -2411,7 +2619,7 @@ async function submitHelloAsso() {
       donOrigine: 'HelloAsso',
       notes: notes || null,
       auteur: currentUser.email,
-      auteurNom: currentUserData.displayName || currentUser.displayName || currentUser.email,
+      auteurNom: ORG_NAME,
       createdAt: serverTimestamp(),
       driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
     };
@@ -2510,8 +2718,9 @@ window.submitOperation = async () => {
       donOrigine: currentType === 'entree' && currentDonMode === 'bancaire' ? (document.getElementById('op-don-origine').value || null) : null,
       virementPar: currentType === 'virement' ? (document.getElementById('op-virement-par').value.trim() || null) : null,
       notes: document.getElementById('op-notes').value.trim() || null,
+      lignes: currentType === 'sortie' && cleanLignes().length ? cleanLignes() : null,
       auteur: currentUser.email,
-      auteurNom: currentUserData.displayName || currentUser.displayName || currentUser.email,
+      auteurNom: ORG_NAME,
       createdAt: serverTimestamp(),
       driveFileId: null,
       driveLink: null,
@@ -2601,8 +2810,9 @@ window.showDetail = (id) => {
     ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''}
-    <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${op.auteurNom || op.auteur}</span></div>
-    ${op.notes ? `<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${op.notes}</span></div>` : ''}
+    <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${ORG_NAME}</span></div>
+    ${renderTicketHTML(op)}
+    ${op.notes ? `<div class="detail-block"><div class="detail-key">Notes</div><div class="detail-notes">${formatNotes(op.notes)}</div></div>` : ''}
     ${(op.driveFiles && op.driveFiles.length > 0)
       ? op.driveFiles.map((f,i) => `<div class="detail-row"><span class="detail-key">Fichier ${i+1}</span><span class="detail-val">📎 ${f.name || 'Fichier'}</span></div>`).join('')
       : (op.driveLink ? `<div class="detail-row"><span class="detail-key">Justificatif</span><span class="detail-val">📎 ${op.driveFileName || 'Fichier'}</span></div>` : '')}
@@ -2677,6 +2887,8 @@ window.openEditModal = (id) => {
   document.getElementById('op-soiree').value = op.soiree || '';
   document.getElementById('op-notes').value = op.notes || '';
   document.getElementById('op-virement-par').value = op.virementPar || '';
+  lignes = (op.lignes || []).map(l => ({ article: l.article || '', montant: l.montant ?? '', categorie: l.categorie || '', usage: l.usage || '' }));
+  renderLignes();
 
   if (op.type === 'entree') {
     document.getElementById('op-annulee').checked = op.soireeAnnulee || false;
@@ -2795,7 +3007,7 @@ window.enregistrerRecurrente = async (index) => {
     categorie: r.cat || null,
     notes: r.notes || null,
     auteur: currentUser.email,
-    auteurNom: currentUserData.displayName || currentUser.email,
+    auteurNom: ORG_NAME,
     createdAt: serverTimestamp(),
     driveFiles: [], driveFileId: null, driveLink: null, driveFileName: null,
     soiree: null, typeSoiree: null, lieu: null, nbInscrits: null,
@@ -2915,9 +3127,9 @@ window.downloadRecap = (year) => {
             return `<tr>
               <td>${d.toLocaleDateString('fr-FR')}</td>
               <td style="color:${typeColor[op.type] || '#888'};font-weight:600">${typeLabel[op.type] || op.type || '—'}</td>
-              <td>${op.description || ''}${extra}</td>
+              <td>${op.description || ''}${extra}${op.lignes?.length ? '<ul style="margin:4px 0 0 16px;padding:0;font-size:12px;color:#555">' + op.lignes.map(l => `<li>${escHTML(l.article)}${l.categorie ? ' <span style="color:#999">(' + escHTML(l.categorie) + ')</span>' : ''}${l.usage ? ' — pour ' + escHTML(l.usage) : ''} : ${fmt(l.montant || 0)}</li>`).join('') + '</ul>' : ''}</td>
               <td>${op.categorie || '—'}</td>
-              <td>${op.auteurNom || op.auteur || '—'}</td>
+              <td>${ORG_NAME}</td>
               <td style="text-align:right;font-family:monospace;color:${typeColor[op.type]}">${sign}${fmt(op.montant)}</td>
             </tr>`;
           }).join('')}
@@ -2994,7 +3206,7 @@ window.downloadRecapCSV = (year) => {
     'Date', 'Type', 'Montant (€)', 'Description', 'Catégorie',
     'Type soirée', 'Lieu', 'Nb inscrits', 'Mode don', 'Origine don',
     'HelloAsso Adhésions', 'HelloAsso Dons', 'Déposé/Viré par',
-    'Auteur', 'Notes', 'Au mois', 'Justificatifs'
+    'Auteur', 'Notes', 'Détail ticket', 'Au mois', 'Justificatifs'
   ];
 
   const rows = ops.map(op => {
@@ -3016,8 +3228,9 @@ window.downloadRecapCSV = (year) => {
       op.haAdhesions ? (op.haAdhesions).toFixed(2).replace('.', ',') : '',
       op.haDons ? (op.haDons).toFixed(2).replace('.', ',') : '',
       op.virementPar || '',
-      op.auteurNom || op.auteur || '',
+      ORG_NAME,
       op.notes || '',
+      (op.lignes || []).map(l => `${l.article}${l.categorie ? ' (' + l.categorie + ')' : ''}${l.usage ? ' pour ' + l.usage : ''} : ${(l.montant || 0).toFixed(2).replace('.', ',')} €`).join(' | '),
       op.dateMois ? 'Oui' : 'Non',
       op.driveFiles ? op.driveFiles.map(f => f.link).join(' | ') : (op.driveLink || '')
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';');
@@ -3035,7 +3248,7 @@ window.downloadRecapCSV = (year) => {
     '',
     '',
     '',
-    '', '', '', '', '', '', '', '', '', '', '', ''
+    '', '', '', '', '', '', '', '', '', '', '', '', ''
   ];
   totaux[2] = "ENTRÉES: +" + entrees.toFixed(2).replace(".", ",") + " € | SORTIES: -" + sorties.toFixed(2).replace(".", ",") + " € | SOLDE: " + (entrees-sorties).toFixed(2).replace(".", ",") + " € | VIREMENTS: →" + virements.toFixed(2).replace(".", ",") + " € | DÉPÔTS: →" + depots.toFixed(2).replace(".", ",") + " €";
 
@@ -3066,7 +3279,7 @@ window.exportCSV = () => {
       op.description || '',
       op.categorie || '',
       op.soiree || '',
-      op.auteurNom || op.auteur || '',
+      ORG_NAME,
       op.notes || '',
       op.dateMois ? 'Oui' : 'Non',
       op.driveFiles ? op.driveFiles.map(f => f.link).join(' | ') : (op.driveLink || '')
@@ -3124,7 +3337,7 @@ function opItemHTML(op) {
       <div class="op-dot ${op.type}"></div>
       <div class="op-info">
         <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}</div>
-        <div class="op-meta">${subLabel}${op.auteurNom || op.auteur ? ' · ' + (op.auteurNom || op.auteur) : ''}</div>
+        <div class="op-meta">${subLabel} · ${ORG_NAME}</div>
       </div>
       ${(op.driveFiles?.length > 0 || op.driveLink) ? `<span class="op-attach">📎${op.driveFiles?.length > 1 ? op.driveFiles.length : ''}</span>` : ''}
       <div class="op-amount ${op.type === 'depot' ? 'virement' : op.type}">${sign}${fmt(op.montant)}</div>

@@ -1152,8 +1152,9 @@
         <optgroup label="Sorties">
           <option value="Frais bancaire">🏦 Frais bancaire</option>
           <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
-          <option value="Matériel">🎮 Matériel jeux</option>
+          <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires)</option>
           <option value="Fournitures">🛒 Fournitures</option>
+          <option value="Lots / cadeaux">🎁 Lots / cadeaux</option>
           <option value="Achats multiples">🧾 Achats multiples</option>
           <option value="Local">🏠 Local</option>
           <option value="Communication">📢 Communication</option>
@@ -1263,8 +1264,9 @@
         </optgroup>
         <optgroup label="Sorties">
           <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
-          <option value="Matériel">🎮 Matériel jeux</option>
+          <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires)</option>
           <option value="Fournitures">🛒 Fournitures</option>
+          <option value="Lots / cadeaux">🎁 Lots / cadeaux</option>
           <option value="Achats multiples">🧾 Achats multiples</option>
           <option value="Local">🏠 Local</option>
           <option value="Communication">📢 Communication</option>
@@ -1673,7 +1675,7 @@ function formatNotes(txt) {
 }
 
 // ── DÉTAIL DU TICKET (lignes) ──
-const LIGNE_CATS = ['Nourriture/Boisson','Matériel','Fournitures','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
+const LIGNE_CATS = ['Nourriture/Boisson','Matériel','Fournitures','Lots / cadeaux','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
 let lignes = [];
 
 function lignesTotal() {
@@ -1691,7 +1693,7 @@ function renderLignes() {
       <div class="ligne-row2">
         <select onchange="updateLigne(${i},'categorie',this.value)">
           <option value="">Catégorie…</option>
-          ${LIGNE_CATS.map(c => `<option value="${c}" ${l.categorie === c ? 'selected' : ''}>${c}</option>`).join('')}
+          ${LIGNE_CATS.map(c => `<option value="${c}" ${l.categorie === c ? 'selected' : ''}>${c === 'Matériel' ? 'Matériel (jeux, déguisements…)' : c}</option>`).join('')}
         </select>
         <input type="text" placeholder="Pour (ex: Blind Test 04/10)" value="${escHTML(l.usage)}" oninput="updateLigne(${i},'usage',this.value)"/>
       </div>

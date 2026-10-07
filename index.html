@@ -3385,9 +3385,14 @@ window.showPage = (page) => {
 };
 
 // Close modals on overlay click
+// (seulement si le clic a COMMENCÉ sur le fond : une sélection de texte qui déborde ne ferme plus la fenêtre)
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  let downOnOverlay = false;
+  overlay.addEventListener('mousedown', (e) => { downOnOverlay = (e.target === overlay); });
+  overlay.addEventListener('touchstart', (e) => { downOnOverlay = (e.target === overlay); }, { passive: true });
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.classList.remove('open');
+    if (e.target === overlay && downOnOverlay) overlay.classList.remove('open');
+    downOnOverlay = false;
   });
 });
 </script>

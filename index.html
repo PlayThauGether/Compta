@@ -1156,6 +1156,7 @@
         <optgroup label="Sorties">
           <option value="Frais bancaire">🏦 Frais bancaire · 627</option>
           <option value="Nourriture/Boisson">🍕 Nourriture/Boisson · 6068</option>
+          <option value="Repas bénévoles">🍽️ Repas bénévoles / réceptions · 6257</option>
           <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires) · 6063</option>
           <option value="Fournitures">🛒 Fournitures · 6064</option>
           <option value="Lots">🏆 Lots (quiz, blind test, jeux) · 62341</option>
@@ -1270,6 +1271,7 @@
         </optgroup>
         <optgroup label="Sorties">
           <option value="Nourriture/Boisson">🍕 Nourriture/Boisson · 6068</option>
+          <option value="Repas bénévoles">🍽️ Repas bénévoles / réceptions · 6257</option>
           <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires) · 6063</option>
           <option value="Fournitures">🛒 Fournitures · 6064</option>
           <option value="Lots">🏆 Lots (quiz, blind test, jeux) · 62341</option>
@@ -1678,12 +1680,12 @@ const PCG_COMPTES = {
   '6068': 'Autres matières et fournitures (alimentation, boissons)', '6063': 'Fournitures et petit équipement (jeux, matériel)',
   '6064': 'Fournitures administratives', '6234': 'Cadeaux, lots (ancienne catégorie, à répartir)',
   '62341': 'Lots de jeux (quiz, blind test, tournois)', '62342': 'Cadeaux (remerciements, partenaires, bénévoles)', '606': 'Achats non stockés (divers)',
-  '613': 'Locations', '623': 'Publicité, publications', '625': 'Déplacements', '627': 'Services bancaires',
+  '6257': 'Réceptions (repas bénévoles)', '613': 'Locations', '623': 'Publicité, publications', '625': 'Déplacements', '627': 'Services bancaires',
   '628': 'Charges diverses'
 };
 const PCG_CAT = {
   'Don': '7541', 'Adhésion': '756', 'Billetterie': '706', 'Recette soirée': '706', 'Subvention': '74', 'Autre entrée': '758',
-  'Nourriture/Boisson': '6068', 'Matériel': '6063', 'Fournitures': '6064', 'Lots': '62341', 'Cadeaux': '62342', 'Lots / cadeaux': '6234', 'Achats multiples': '606',
+  'Nourriture/Boisson': '6068', 'Repas bénévoles': '6257', 'Matériel': '6063', 'Fournitures': '6064', 'Lots': '62341', 'Cadeaux': '62342', 'Lots / cadeaux': '6234', 'Achats multiples': '606',
   'Local': '613', 'Communication': '623', 'Transport': '625', 'Remboursement': '628', 'Frais bancaire': '627', 'Autre sortie': '628'
 };
 function pcgLabel(code) { return code + ' · ' + (PCG_COMPTES[code] || ''); }
@@ -1769,7 +1771,7 @@ function formatNotes(txt) {
 }
 
 // ── DÉTAIL DU TICKET (lignes) ──
-const LIGNE_CATS = ['Nourriture/Boisson','Matériel','Fournitures','Lots','Cadeaux','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
+const LIGNE_CATS = ['Nourriture/Boisson','Repas bénévoles','Matériel','Fournitures','Lots','Cadeaux','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
 let lignes = [];
 
 function lignesTotal() {

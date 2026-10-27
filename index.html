@@ -1043,6 +1043,10 @@
       <div class="card">
         <div class="card-title">📄 Récapitulatifs par exercice</div>
         <p style="font-size:13px;color:var(--text3);margin-bottom:16px">Bilan par exercice comptable (1er septembre → 31 août), en HTML imprimable ou CSV.</p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px;cursor:pointer">
+          <input type="checkbox" id="recap-detail-comptes" style="width:auto"/>
+          PDF : ajouter le détail des achats dans chaque compte
+        </label>
         <div id="recap-years-list">
           <div class="empty-state"><div class="empty-icon">📭</div><p>Aucune donnée</p></div>
         </div>
@@ -1144,22 +1148,24 @@
       <select id="rec-cat">
         <option value="">— Sélectionner —</option>
         <optgroup label="Entrées">
-          <option value="Don">🎁 Don</option>
-          <option value="Adhésion">🪪 Adhésion</option>
-          <option value="Subvention">🏛️ Subvention</option>
-          <option value="Autre entrée">📦 Autre entrée</option>
+          <option value="Don">🎁 Don · 7541</option>
+          <option value="Adhésion">🪪 Adhésion · 756</option>
+          <option value="Subvention">🏛️ Subvention · 74</option>
+          <option value="Autre entrée">📦 Autre entrée · 758</option>
         </optgroup>
         <optgroup label="Sorties">
-          <option value="Frais bancaire">🏦 Frais bancaire</option>
-          <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
-          <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires)</option>
-          <option value="Fournitures">🛒 Fournitures</option>
-          <option value="Lots / cadeaux">🎁 Lots / cadeaux</option>
-          <option value="Achats multiples">🧾 Achats multiples</option>
-          <option value="Local">🏠 Local</option>
-          <option value="Communication">📢 Communication</option>
-          <option value="Transport">🚗 Transport</option>
-          <option value="Autre sortie">📦 Autre sortie</option>
+          <option value="Frais bancaire">🏦 Frais bancaire · 627</option>
+          <option value="Nourriture/Boisson">🍕 Nourriture/Boisson · 6068</option>
+          <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires) · 6063</option>
+          <option value="Fournitures">🛒 Fournitures · 6064</option>
+          <option value="Lots">🏆 Lots (quiz, blind test, jeux) · 62341</option>
+          <option value="Cadeaux">🎁 Cadeaux (remerciements, partenaires) · 62342</option>
+          <option value="Lots / cadeaux" hidden>Lots / cadeaux (ancienne catégorie) · 6234</option>
+          <option value="Achats multiples">🧾 Achats multiples · 606</option>
+          <option value="Local">🏠 Local · 613</option>
+          <option value="Communication">📢 Communication · 623</option>
+          <option value="Transport">🚗 Transport · 625</option>
+          <option value="Autre sortie">📦 Autre sortie · 628</option>
         </optgroup>
       </select>
     </div>
@@ -1255,25 +1261,27 @@
       <select id="op-cat" onchange="toggleAutrePrecision()">
         <option value="">— Sélectionner —</option>
         <optgroup label="Entrées">
-          <option value="Don">🎁 Don</option>
-          <option value="Adhésion">🪪 Adhésion</option>
-          <option value="Billetterie">🎟️ Billetterie</option>
-          <option value="Recette soirée">🎲 Recette soirée</option>
-          <option value="Subvention">🏛️ Subvention</option>
-          <option value="Autre entrée">📦 Autre entrée</option>
+          <option value="Don">🎁 Don · 7541</option>
+          <option value="Adhésion">🪪 Adhésion · 756</option>
+          <option value="Billetterie">🎟️ Billetterie · 706</option>
+          <option value="Recette soirée">🎲 Recette soirée · 706</option>
+          <option value="Subvention">🏛️ Subvention · 74</option>
+          <option value="Autre entrée">📦 Autre entrée · 758</option>
         </optgroup>
         <optgroup label="Sorties">
-          <option value="Nourriture/Boisson">🍕 Nourriture/Boisson</option>
-          <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires)</option>
-          <option value="Fournitures">🛒 Fournitures</option>
-          <option value="Lots / cadeaux">🎁 Lots / cadeaux</option>
-          <option value="Achats multiples">🧾 Achats multiples</option>
-          <option value="Local">🏠 Local</option>
-          <option value="Communication">📢 Communication</option>
-          <option value="Transport">🚗 Transport</option>
-          <option value="Remboursement">💸 Remboursement membre</option>
-          <option value="Frais bancaire">🏦 Frais bancaire</option>
-          <option value="Autre sortie">📦 Autre sortie</option>
+          <option value="Nourriture/Boisson">🍕 Nourriture/Boisson · 6068</option>
+          <option value="Matériel">🎮 Matériel (jeux, déguisements, accessoires) · 6063</option>
+          <option value="Fournitures">🛒 Fournitures · 6064</option>
+          <option value="Lots">🏆 Lots (quiz, blind test, jeux) · 62341</option>
+          <option value="Cadeaux">🎁 Cadeaux (remerciements, partenaires) · 62342</option>
+          <option value="Lots / cadeaux" hidden>Lots / cadeaux (ancienne catégorie) · 6234</option>
+          <option value="Achats multiples">🧾 Achats multiples · 606</option>
+          <option value="Local">🏠 Local · 613</option>
+          <option value="Communication">📢 Communication · 623</option>
+          <option value="Transport">🚗 Transport · 625</option>
+          <option value="Remboursement">💸 Remboursement membre · 628</option>
+          <option value="Frais bancaire">🏦 Frais bancaire · 627</option>
+          <option value="Autre sortie">📦 Autre sortie · 628</option>
         </optgroup>
       </select>
     </div>
@@ -1663,6 +1671,92 @@ window.setFilter = (type, btn) => {
 // ── AFFICHAGE AUTEUR ──
 const ORG_NAME = "Play Thau'Gether";
 
+// ── PLAN COMPTABLE (PCG associatif, règlement ANC 2018-06) ──
+const PCG_COMPTES = {
+  '7541': 'Dons manuels', '756': 'Cotisations', '706': 'Prestations de services (billetterie, recettes)',
+  '74': "Subventions d'exploitation", '758': 'Produits divers de gestion courante',
+  '6068': 'Autres matières et fournitures (alimentation, boissons)', '6063': 'Fournitures et petit équipement (jeux, matériel)',
+  '6064': 'Fournitures administratives', '6234': 'Cadeaux, lots (ancienne catégorie, à répartir)',
+  '62341': 'Lots de jeux (quiz, blind test, tournois)', '62342': 'Cadeaux (remerciements, partenaires, bénévoles)', '606': 'Achats non stockés (divers)',
+  '613': 'Locations', '623': 'Publicité, publications', '625': 'Déplacements', '627': 'Services bancaires',
+  '628': 'Charges diverses'
+};
+const PCG_CAT = {
+  'Don': '7541', 'Adhésion': '756', 'Billetterie': '706', 'Recette soirée': '706', 'Subvention': '74', 'Autre entrée': '758',
+  'Nourriture/Boisson': '6068', 'Matériel': '6063', 'Fournitures': '6064', 'Lots': '62341', 'Cadeaux': '62342', 'Lots / cadeaux': '6234', 'Achats multiples': '606',
+  'Local': '613', 'Communication': '623', 'Transport': '625', 'Remboursement': '628', 'Frais bancaire': '627', 'Autre sortie': '628'
+};
+function pcgLabel(code) { return code + ' · ' + (PCG_COMPTES[code] || ''); }
+
+// Répartition d'une opération par compte : [{ code, montant }]. Virements / dépôts = mouvements de trésorerie, hors résultat.
+function pcgBreakdown(op) {
+  if (op.type === 'virement' || op.type === 'depot') return [];
+  const m = op.montant || 0;
+  if (op.helloasso) {
+    const out = [];
+    if (op.haAdhesions) out.push({ code: '756', montant: op.haAdhesions });
+    if (op.haDons) out.push({ code: '7541', montant: op.haDons });
+    const reste = m - (op.haAdhesions || 0) - (op.haDons || 0);
+    if (Math.abs(reste) > 0.005) out.push({ code: '758', montant: reste });
+    return out;
+  }
+  if (op.type === 'entree') {
+    const code = PCG_CAT[op.categorie] || ((op.typeSoiree || op.donMode) ? '7541' : '758');
+    return [{ code, montant: m }];
+  }
+  // sortie
+  const base = PCG_CAT[op.categorie] || '628';
+  if (op.lignes && op.lignes.some(l => l.categorie)) {
+    const acc = {};
+    let reste = m;
+    op.lignes.forEach(l => {
+      const c = PCG_CAT[l.categorie] || base;
+      acc[c] = (acc[c] || 0) + (l.montant || 0);
+      reste -= (l.montant || 0);
+    });
+    if (Math.abs(reste) > 0.005) acc[base] = (acc[base] || 0) + reste;
+    return Object.entries(acc).map(([code, montant]) => ({ code, montant }));
+  }
+  return [{ code: base, montant: m }];
+}
+function pcgText(op) {
+  const b = pcgBreakdown(op);
+  if (b.length === 0) return op.type === 'virement' || op.type === 'depot' ? '58 · Virement interne (trésorerie)' : '';
+  if (b.length === 1) return pcgLabel(b[0].code);
+  return b.map(x => `${x.code} (${fmt(x.montant)})`).join(' + ');
+}
+
+// Compte de résultat simplifié d'une liste d'opérations
+function compteResultatHTML(ops) {
+  const charges = {}, produits = {};
+  ops.forEach(op => pcgBreakdown(op).forEach(x => {
+    const t = x.code.startsWith('6') ? charges : produits;
+    t[x.code] = (t[x.code] || 0) + x.montant;
+  }));
+  const rowsOf = t => Object.entries(t).sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([c, v]) => `<tr><td style="font-family:monospace">${c}</td><td>${PCG_COMPTES[c] || ''}</td><td style="text-align:right;font-family:monospace">${fmt(v)}</td></tr>`).join('')
+    || '<tr><td colspan="3" style="color:#999">Aucun</td></tr>';
+  const tc = Object.values(charges).reduce((a, b) => a + b, 0);
+  const tp = Object.values(produits).reduce((a, b) => a + b, 0);
+  const res = tp - tc;
+  return `
+<h2>Compte de résultat (Plan Comptable associatif)</h2>
+<div style="display:flex;gap:24px;flex-wrap:wrap">
+  <div style="flex:1;min-width:300px">
+    <h3>Charges (comptes 6)</h3>
+    <table><thead><tr><th>Compte</th><th>Intitulé</th><th style="text-align:right">Montant</th></tr></thead>
+    <tbody>${rowsOf(charges)}<tr><td></td><td><b>Total charges</b></td><td style="text-align:right;font-family:monospace"><b>${fmt(tc)}</b></td></tr></tbody></table>
+  </div>
+  <div style="flex:1;min-width:300px">
+    <h3>Produits (comptes 7)</h3>
+    <table><thead><tr><th>Compte</th><th>Intitulé</th><th style="text-align:right">Montant</th></tr></thead>
+    <tbody>${rowsOf(produits)}<tr><td></td><td><b>Total produits</b></td><td style="text-align:right;font-family:monospace"><b>${fmt(tp)}</b></td></tr></tbody></table>
+  </div>
+</div>
+<p style="font-size:15px"><b>Résultat de l'exercice : <span class="${res >= 0 ? 'green' : 'red'}">${res >= 0 ? 'Excédent' : 'Déficit'} de ${fmt(Math.abs(res))}</span></b></p>
+<p style="font-size:12px;color:#888">Les virements caisse → banque et les dépôts d'espèces sont des mouvements de trésorerie (compte 58) : ils n'entrent pas dans le résultat.</p>`;
+}
+
 function escHTML(v) {
   return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1675,7 +1769,7 @@ function formatNotes(txt) {
 }
 
 // ── DÉTAIL DU TICKET (lignes) ──
-const LIGNE_CATS = ['Nourriture/Boisson','Matériel','Fournitures','Lots / cadeaux','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
+const LIGNE_CATS = ['Nourriture/Boisson','Matériel','Fournitures','Lots','Cadeaux','Local','Communication','Transport','Remboursement','Frais bancaire','Autre sortie'];
 let lignes = [];
 
 function lignesTotal() {
@@ -1693,7 +1787,7 @@ function renderLignes() {
       <div class="ligne-row2">
         <select onchange="updateLigne(${i},'categorie',this.value)">
           <option value="">Catégorie…</option>
-          ${LIGNE_CATS.map(c => `<option value="${c}" ${l.categorie === c ? 'selected' : ''}>${c === 'Matériel' ? 'Matériel (jeux, déguisements…)' : c}</option>`).join('')}
+          ${LIGNE_CATS.map(c => `<option value="${c}" ${l.categorie === c ? 'selected' : ''}>${({ 'Matériel': 'Matériel (jeux, déguisements…)', 'Lots': 'Lots (quiz, jeux)', 'Cadeaux': 'Cadeaux (remerciements)' })[c] || c} · ${PCG_CAT[c]}</option>`).join('')}
         </select>
         <input type="text" placeholder="Pour (ex: Blind Test 04/10)" value="${escHTML(l.usage)}" oninput="updateLigne(${i},'usage',this.value)"/>
       </div>
@@ -2798,6 +2892,7 @@ window.showDetail = (id) => {
     <div class="detail-row"><span class="detail-key">Description</span><span class="detail-val">${op.description}</span></div>
     <div class="detail-row"><span class="detail-key">Date</span><span class="detail-val">${d.toLocaleDateString('fr-FR', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</span></div>
     ${op.categorie ? `<div class="detail-row"><span class="detail-key">Catégorie</span><span class="detail-val">${op.categorie}${op.autrePrecision ? ' — ' + op.autrePrecision : ''}</span></div>` : ''}
+    ${pcgText(op) ? `<div class="detail-row"><span class="detail-key">Compte PCG</span><span class="detail-val" style="font-family:'JetBrains Mono',monospace;font-size:13px">${pcgText(op)}</span></div>` : ''}
     ${op.soiree ? `<div class="detail-row"><span class="detail-key">Soirée</span><span class="detail-val">${op.soiree}</span></div>` : ''}
     ${op.typeSoiree ? `<div class="detail-row"><span class="detail-key">Type de soirée</span><span class="detail-val">${op.typeSoiree}</span></div>` : ''}
     ${op.lieu ? `<div class="detail-row"><span class="detail-key">Lieu</span><span class="detail-val">${op.lieu}</span></div>` : ''}
@@ -3081,7 +3176,9 @@ function renderRecapPage() {
               <div style="font-family:'JetBrains Mono',monospace;color:${solde >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${fmt(solde)}</div>
             </div>
           </div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-primary" style="background:var(--bg3);color:var(--green);border:1px solid var(--green)" onclick="printRecapType(${year},'entree')">🖨️ PDF Entrées</button>
+            <button class="btn-primary" style="background:var(--bg3);color:var(--red);border:1px solid var(--red)" onclick="printRecapType(${year},'sortie')">🖨️ PDF Sorties</button>
             <button class="btn-primary" onclick="downloadRecap(${year})">⬇️ HTML</button>
             <button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="downloadRecapCSV(${year})">⬇️ CSV</button>
           </div>
@@ -3089,6 +3186,134 @@ function renderRecapPage() {
       </div>`;
   }).join('');
 }
+
+// ── PDF ENTRÉES / SORTIES (via impression → « Enregistrer en PDF ») ──
+window.printRecapType = (year, kind) => {
+  const isE = kind === 'entree';
+  const ops = allOps.filter(op => exerciceOf(op) === year && op.type === kind)
+    .sort((a, b) => opDate(a) - opDate(b));
+  if (ops.length === 0) { showToast('Aucune ' + (isE ? 'entrée' : 'sortie') + ' sur cet exercice', 'error'); return; }
+
+  // Totaux par compte
+  const parCompte = {};
+  ops.forEach(op => pcgBreakdown(op).forEach(x => {
+    parCompte[x.code] = (parCompte[x.code] || 0) + x.montant;
+  }));
+  const total = ops.reduce((s, o) => s + (o.montant || 0), 0);
+  const comptesRows = Object.entries(parCompte).sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([c, v]) => `<tr><td class="code">${c}</td><td>${PCG_COMPTES[c] || ''}</td><td class="amt">${fmt(v)}</td></tr>`).join('');
+
+  const libelle = op => {
+    if (op.helloasso) return 'HelloAsso — ' + opDate(op).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    if (isE && (op.typeSoiree || op.lieu)) {
+      const don = op.soireeAnnulee ? 'Soirée annulée' : op.pasDeDon ? 'Pas de dons' : (op.donMode === 'bancaire' ? 'Don bancaire' : 'Don liquide');
+      return [op.typeSoiree, op.lieu].filter(Boolean).join(' ') + ' · ' + don;
+    }
+    return op.description || '';
+  };
+
+  const lignesRows = ops.map(op => {
+    const b = pcgBreakdown(op);
+    const multi = b.length > 1;
+    let html = `<tr class="op">
+      <td>${opDate(op).toLocaleDateString('fr-FR')}</td>
+      <td>${escHTML(libelle(op))}${op.description && libelle(op) !== op.description ? '<div class="sub">' + escHTML(op.description) + '</div>' : ''}</td>
+      <td>${escHTML(op.categorie || '')}</td>
+      <td class="code">${multi ? 'réparti' : (b[0]?.code || '')}</td>
+      <td class="amt">${fmt(op.montant || 0)}</td>
+    </tr>`;
+    if (multi) {
+      html += b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${PCG_COMPTES[x.code] || ''}${op.lignes ? ' : ' + op.lignes.filter(l => (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('');
+    }
+    return html;
+  }).join('');
+
+  // Détail par compte (option)
+  const withDetail = document.getElementById('recap-detail-comptes')?.checked;
+  let detailHTML = '';
+  if (withDetail) {
+    const groups = {};
+    const push = (code, e) => { (groups[code] = groups[code] || []).push(e); };
+    ops.forEach(op => {
+      const d = opDate(op).toLocaleDateString('fr-FR');
+      if (op.helloasso) {
+        pcgBreakdown(op).forEach(x => push(x.code, { d, lib: libelle(op), arts: [{ a: x.code === '756' ? 'Adhésions' : x.code === '7541' ? 'Dons' : 'Autre', m: x.montant }], m: x.montant }));
+        return;
+      }
+      if (op.lignes && op.lignes.length) {
+        const base = PCG_CAT[op.categorie] || (isE ? '758' : '628');
+        const acc = {};
+        let reste = op.montant || 0;
+        op.lignes.forEach(l => {
+          const c = PCG_CAT[l.categorie] || base;
+          (acc[c] = acc[c] || []).push({ a: l.article || 'Article', m: l.montant || 0 });
+          reste -= (l.montant || 0);
+        });
+        if (Math.abs(reste) > 0.005) (acc[base] = acc[base] || []).push({ a: 'Reste du ticket (non détaillé)', m: reste });
+        Object.entries(acc).forEach(([c, arts]) => push(c, { d, lib: libelle(op), arts, m: arts.reduce((s, x) => s + x.m, 0) }));
+        return;
+      }
+      pcgBreakdown(op).forEach(x => push(x.code, { d, lib: libelle(op), arts: [], m: x.montant }));
+    });
+    detailHTML = `<h2 style="page-break-before:always">Détail par compte</h2>` +
+      Object.keys(groups).sort().map(c => {
+        const list = groups[c];
+        const tot = list.reduce((s, e) => s + e.m, 0);
+        return `<div class="compte">
+          <div class="compte-head"><span class="code">${c}</span> · ${PCG_COMPTES[c] || ''}<span class="amt">${fmt(tot)}</span></div>
+          <table style="table-layout:fixed"><thead><tr><th style="width:80px">Date</th><th style="width:32%">Achat</th><th>Articles</th><th class="amt" style="width:90px">Montant</th></tr></thead><tbody>
+          ${list.map(e => `<tr><td>${e.d}</td><td>${escHTML(e.lib)}</td><td>${e.arts.length ? e.arts.map(x => `${escHTML(x.a)} <span class="sub">(${fmt(x.m)})</span>`).join('<br>') : '<span class="sub">—</span>'}</td><td class="amt">${fmt(e.m)}</td></tr>`).join('')}
+          </tbody></table></div>`;
+      }).join('');
+  }
+
+  const titre = (isE ? 'Entrées' : 'Sorties') + ' — exercice ' + exerciceLabel(year);
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>PTG ${titre}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: Arial, sans-serif; color: #222; font-size: 12px; margin: 0; }
+  h1 { font-size: 20px; margin: 0 0 4px; border-bottom: 3px solid ${isE ? '#2ecc8a' : '#e05555'}; padding-bottom: 8px; }
+  h2 { font-size: 14px; margin: 22px 0 8px; }
+  .meta { color: #666; font-size: 12px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f2f2f2; text-align: left; padding: 6px 8px; font-size: 10px; text-transform: uppercase; border-bottom: 2px solid #ccc; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
+  td.amt, th.amt { text-align: right; font-family: monospace; white-space: nowrap; }
+  td.code { font-family: monospace; white-space: nowrap; }
+  tr.split td { border-bottom: none; color: #666; font-size: 11px; padding-top: 1px; padding-bottom: 1px; }
+  .sub { color: #888; font-size: 10px; }
+  .total td { font-weight: bold; border-top: 2px solid #333; border-bottom: none; }
+  tr { page-break-inside: avoid; }
+  .footer { margin-top: 24px; font-size: 10px; color: #999; text-align: center; }
+  .compte { margin-bottom: 18px; page-break-inside: avoid; }
+  .compte-head { display: flex; gap: 6px; font-weight: bold; font-size: 13px; background: #f7f7f7; padding: 7px 8px; border-left: 4px solid ${isE ? '#2ecc8a' : '#e05555'}; }
+  .compte-head .amt { margin-left: auto; font-family: monospace; }
+  .compte-head .code { font-family: monospace; }
+  .compte .sub { font-size: 11px; color: #888; }
+</style></head><body>
+<h1>Play Thau'Gether — ${titre}</h1>
+<div class="meta">Période ${exercicePeriode(year)} · ${ops.length} opération${ops.length > 1 ? 's' : ''} · Édité le ${new Date().toLocaleDateString('fr-FR')}</div>
+
+<h2>Total par compte (Plan Comptable associatif)</h2>
+<table><thead><tr><th>Compte</th><th>Intitulé</th><th class="amt">Montant</th></tr></thead>
+<tbody>${comptesRows}<tr class="total"><td></td><td>Total ${isE ? 'entrées' : 'sorties'}</td><td class="amt">${fmt(total)}</td></tr></tbody></table>
+
+<h2>Détail des opérations</h2>
+<table><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Compte</th><th class="amt">Montant</th></tr></thead>
+<tbody>${lignesRows}<tr class="total"><td></td><td colspan="3">Total ${isE ? 'entrées' : 'sorties'}</td><td class="amt">${fmt(total)}</td></tr></tbody></table>
+
+${detailHTML}
+
+<div class="footer">Play Thau'Gether · ${titre}</div>
+<script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Autorise les fenêtres pop-up pour générer le PDF', 'error'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+};
 
 window.downloadRecap = (year) => {
   const ops = allOps.filter(op => exerciceOf(op) === year).sort((a, b) => {
@@ -3119,7 +3344,7 @@ window.downloadRecap = (year) => {
     <div class="month-block">
       <h3>${month}</h3>
       <table>
-        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Catégorie</th><th>Auteur</th><th style="text-align:right">Montant</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Catégorie</th><th>Compte PCG</th><th style="text-align:right">Montant</th></tr></thead>
         <tbody>
           ${mops.map(op => {
             const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
@@ -3131,7 +3356,7 @@ window.downloadRecap = (year) => {
               <td style="color:${typeColor[op.type] || '#888'};font-weight:600">${typeLabel[op.type] || op.type || '—'}</td>
               <td>${op.description || ''}${extra}${op.lignes?.length ? '<ul style="margin:4px 0 0 16px;padding:0;font-size:12px;color:#555">' + op.lignes.map(l => `<li>${escHTML(l.article)}${l.categorie ? ' <span style="color:#999">(' + escHTML(l.categorie) + ')</span>' : ''}${l.usage ? ' — pour ' + escHTML(l.usage) : ''} : ${fmt(l.montant || 0)}</li>`).join('') + '</ul>' : ''}</td>
               <td>${op.categorie || '—'}</td>
-              <td>${ORG_NAME}</td>
+              <td style="font-family:monospace;font-size:12px">${pcgBreakdown(op).map(x => x.code).join(' + ') || '58'}</td>
               <td style="text-align:right;font-family:monospace;color:${typeColor[op.type]}">${sign}${fmt(op.montant)}</td>
             </tr>`;
           }).join('')}
@@ -3177,6 +3402,8 @@ window.downloadRecap = (year) => {
   <div class="summary-box"><div class="summary-label">Solde net</div><div class="summary-value ${solde >= 0 ? 'green' : 'red'}">${solde >= 0 ? '+' : ''}${fmt(solde)}</div></div>
 </div>
 
+${compteResultatHTML(ops)}
+
 <h2>Détail par mois</h2>
 ${monthsHTML}
 
@@ -3205,7 +3432,7 @@ window.downloadRecapCSV = (year) => {
   if (ops.length === 0) { showToast('Aucune donnée', 'error'); return; }
 
   const header = [
-    'Date', 'Type', 'Montant (€)', 'Description', 'Catégorie',
+    'Date', 'Type', 'Montant (€)', 'Description', 'Catégorie', 'Compte PCG',
     'Type soirée', 'Lieu', 'Nb inscrits', 'Mode don', 'Origine don',
     'HelloAsso Adhésions', 'HelloAsso Dons', 'Déposé/Viré par',
     'Auteur', 'Notes', 'Détail ticket', 'Au mois', 'Justificatifs'
@@ -3222,6 +3449,7 @@ window.downloadRecapCSV = (year) => {
       sign + (op.montant || 0).toFixed(2).replace('.', ','),
       op.description || '',
       op.categorie || '',
+      pcgText(op),
       op.typeSoiree || '',
       op.lieu || '',
       op.nbInscrits || '',
@@ -3250,7 +3478,7 @@ window.downloadRecapCSV = (year) => {
     '',
     '',
     '',
-    '', '', '', '', '', '', '', '', '', '', '', '', ''
+    '', '', '', '', '', '', '', '', '', '', '', '', '', ''
   ];
   totaux[2] = "ENTRÉES: +" + entrees.toFixed(2).replace(".", ",") + " € | SORTIES: -" + sorties.toFixed(2).replace(".", ",") + " € | SOLDE: " + (entrees-sorties).toFixed(2).replace(".", ",") + " € | VIREMENTS: →" + virements.toFixed(2).replace(".", ",") + " € | DÉPÔTS: →" + depots.toFixed(2).replace(".", ",") + " €";
 

@@ -3191,21 +3191,19 @@ function renderRecapPage() {
   }).join('');
 }
 
-// ── PDF ENTRÉES / SORTIES (via impression → « Enregistrer en PDF ») ──
+// ── PDF ENTRÉES / SORTIES (rapport stylé, via impression → « Enregistrer en PDF ») ──
 window.printRecapType = (year, kind) => {
   const isE = kind === 'entree';
   const ops = allOps.filter(op => exerciceOf(op) === year && op.type === kind)
     .sort((a, b) => opDate(a) - opDate(b));
   if (ops.length === 0) { showToast('Aucune ' + (isE ? 'entrée' : 'sortie') + ' sur cet exercice', 'error'); return; }
 
-  // Totaux par compte
-  const parCompte = {};
-  ops.forEach(op => pcgBreakdown(op).forEach(x => {
-    parCompte[x.code] = (parCompte[x.code] || 0) + x.montant;
-  }));
+  const ACC = isE ? '#16a06e' : '#d9403f';
+  const ACC_SOFT = isE ? '#e6f6ef' : '#fbeaea';
+  const PAL = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6'];
+  const OTHER = '#a3a29c';
   const total = ops.reduce((s, o) => s + (o.montant || 0), 0);
-  const comptesRows = Object.entries(parCompte).sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([c, v]) => `<tr><td class="code">${c}</td><td>${PCG_COMPTES[c] || ''}</td><td class="amt">${fmt(v)}</td></tr>`).join('');
+  const pct = v => total ? (v / total * 100).toFixed(1).replace('.', ',') + ' %' : '—';
 
   const libelle = op => {
     if (op.helloasso) return 'HelloAsso — ' + opDate(op).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -3216,23 +3214,135 @@ window.printRecapType = (year, kind) => {
     return op.description || '';
   };
 
-  const lignesRows = ops.map(op => {
-    const b = pcgBreakdown(op);
-    const multi = b.length > 1;
-    let html = `<tr class="op">
-      <td>${opDate(op).toLocaleDateString('fr-FR')}</td>
-      <td>${escHTML(libelle(op))}${op.description && libelle(op) !== op.description ? '<div class="sub">' + escHTML(op.description) + '</div>' : ''}</td>
-      <td>${escHTML(op.categorie || '')}</td>
-      <td class="code">${multi ? 'réparti' : (b[0]?.code || '')}</td>
-      <td class="amt">${fmt(op.montant || 0)}</td>
-    </tr>`;
-    if (multi) {
-      html += b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${PCG_COMPTES[x.code] || ''}${op.lignes ? ' : ' + op.lignes.filter(l => (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('');
-    }
-    return html;
+  // ── Totaux par compte ──
+  const parCompte = {};
+  ops.forEach(op => pcgBreakdown(op).forEach(x => { parCompte[x.code] = (parCompte[x.code] || 0) + x.montant; }));
+  const comptes = Object.entries(parCompte).map(([code, v]) => ({ code, v })).filter(c => Math.abs(c.v) > 0.004).sort((a, b) => b.v - a.v);
+  const colorOf = {};
+  comptes.forEach((c, i) => { colorOf[c.code] = i < 7 ? PAL[i] : OTHER; });
+  const slices = comptes.slice(0, 7).map(c => ({ v: c.v, color: colorOf[c.code] }));
+  if (comptes.length > 7) slices.push({ v: comptes.slice(7).reduce((s, c) => s + c.v, 0), color: OTHER });
+
+  const donut = (() => {
+    const pos = slices.filter(x => x.v > 0);
+    const T = pos.reduce((s, x) => s + x.v, 0) || 1;
+    const cx = 100, cy = 100, R = 92, r = 60;
+    const P = (rad, a) => (cx + rad * Math.cos(a)).toFixed(2) + ' ' + (cy + rad * Math.sin(a)).toFixed(2);
+    let a0 = -Math.PI / 2;
+    const gap = pos.length > 1 ? 0.022 : 0;
+    const paths = pos.map(x => {
+      const ang = x.v / T * 2 * Math.PI;
+      if (ang >= 2 * Math.PI - 1e-6) return `<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="${x.color}" stroke-width="${R - r}"/>`;
+      const s = a0 + gap / 2;
+      let e = a0 + ang - gap / 2;
+      if (e <= s) e = s + 0.002;
+      a0 += ang;
+      const large = (e - s) > Math.PI ? 1 : 0;
+      return `<path d="M ${P(R, s)} A ${R} ${R} 0 ${large} 1 ${P(R, e)} L ${P(r, e)} A ${r} ${r} 0 ${large} 0 ${P(r, s)} Z" fill="${x.color}"/>`;
+    }).join('');
+    return `<svg viewBox="0 0 200 200" width="165" height="165" role="img" aria-label="Répartition par compte">${paths}
+      <text x="100" y="98" text-anchor="middle" class="donut-v">${fmt(total)}</text>
+      <text x="100" y="118" text-anchor="middle" class="donut-s">${comptes.length} compte${comptes.length > 1 ? 's' : ''}</text></svg>`;
+  })();
+
+  const legend = comptes.map(c => `<tr>
+      <td style="white-space:nowrap;width:74px"><span class="chip" style="background:${colorOf[c.code]}"></span><span class="code">${c.code}</span></td>
+      <td>${PCG_COMPTES[c.code] || ''}</td>
+      <td class="amt">${fmt(c.v)}</td>
+      <td class="pct">${pct(c.v)}</td>
+    </tr>`).join('');
+
+  // ── Mois par mois (sept → août) ──
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(year, 8 + i, 1);
+    return { y: d.getFullYear(), m: d.getMonth(), label: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), v: 0, n: 0 };
+  });
+  ops.forEach(op => {
+    const d = opDate(op);
+    const mm = months.find(x => x.y === d.getFullYear() && x.m === d.getMonth());
+    if (mm) { mm.v += op.montant || 0; mm.n++; }
+  });
+  const bars = (() => {
+    const W = 660, H = 150, padL = 46, padB = 24, padT = 16;
+    const maxV = Math.max(...months.map(x => x.v), 1);
+    const step = Math.pow(10, Math.floor(Math.log10(maxV)));
+    const niceMax = Math.ceil(maxV / (step / 2)) * (step / 2);
+    const iw = W - padL - 8, ih = H - padB - padT;
+    const bw = iw / 12;
+    const best = months.reduce((a, b) => b.v > a.v ? b : a, months[0]);
+    const ticks = [0, 0.5, 1].map(t => {
+      const yy = padT + ih - t * ih;
+      return `<line x1="${padL}" x2="${W - 8}" y1="${yy}" y2="${yy}" class="grid"/><text x="${padL - 6}" y="${yy + 3}" text-anchor="end" class="axis">${Math.round(niceMax * t)} €</text>`;
+    }).join('');
+    const rects = months.map((mo, i) => {
+      const h = mo.v > 0 ? Math.max(mo.v / niceMax * ih, 2) : 0;
+      const x = padL + i * bw + bw * 0.22, w = bw * 0.56, y = padT + ih - h;
+      const rr = Math.min(4, w / 2, h);
+      const bar = h > 0 ? `<path d="M ${x} ${y + h} V ${y + rr} Q ${x} ${y} ${x + rr} ${y} H ${x + w - rr} Q ${x + w} ${y} ${x + w} ${y + rr} V ${y + h} Z" fill="${mo === best ? ACC : ACC + '99'}"/>` : '';
+      const lab = mo === best && mo.v > 0 ? `<text x="${x + w / 2}" y="${y - 5}" text-anchor="middle" class="barlab">${fmt(mo.v)}</text>` : '';
+      return bar + lab + `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle" class="axis">${mo.label}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Montants par mois">${ticks}${rects}</svg>`;
+  })();
+  const monthsTable = `<table class="mini"><tr>${months.map(m => `<th>${m.label}</th>`).join('')}</tr><tr>${months.map(m => `<td>${m.v ? fmt(m.v).replace(' €', '') : '—'}</td>`).join('')}</tr></table>`;
+
+  // ── Bloc spécifique ──
+  const hbars = (rows) => {
+    const max = Math.max(...rows.map(r => r.v), 1);
+    return rows.map(r => `<div class="hb"><div class="hb-l">${escHTML(r.label)}${r.sub ? `<span>${r.sub}</span>` : ''}</div>
+      <div class="hb-t"><div class="hb-f" style="width:${(r.v / max * 100).toFixed(1)}%;background:${ACC}"></div></div>
+      <div class="hb-v">${fmt(r.v)}</div></div>`).join('');
+  };
+  let special = '';
+  if (isE) {
+    const origine = {};
+    ops.forEach(op => {
+      const k = op.helloasso ? 'HelloAsso' : op.donMode === 'bancaire' ? 'Dons bancaires' : (op.typeSoiree || op.donMode) ? 'Dons en liquide' : (op.categorie || 'Autres entrées');
+      origine[k] = (origine[k] || 0) + (op.montant || 0);
+    });
+    const parType = {};
+    ops.filter(o => o.typeSoiree).forEach(op => {
+      const t = parType[op.typeSoiree] = parType[op.typeSoiree] || { v: 0, n: 0 };
+      t.v += op.montant || 0; t.n++;
+    });
+    special = `<div class="grid2">
+      <div class="card"><h3>Origine des entrées</h3>${hbars(Object.entries(origine).sort((a, b) => b[1] - a[1]).map(([label, v]) => ({ label, v })))}</div>
+      <div class="card"><h3>Dons par type de soirée</h3>${Object.keys(parType).length ? hbars(Object.entries(parType).sort((a, b) => b[1].v - a[1].v).slice(0, 7).map(([label, t]) => ({ label, v: t.v, sub: t.n + ' soirée' + (t.n > 1 ? 's' : '') }))) : '<p class="muted">Aucune soirée renseignée</p>'}</div>
+    </div>`;
+  } else {
+    const top = [...ops].sort((a, b) => (b.montant || 0) - (a.montant || 0)).slice(0, 5);
+    special = `<div class="card"><h3>Les 5 plus grosses dépenses</h3>
+      <table class="tbl"><thead><tr><th style="width:90px">Date</th><th>Achat</th><th>Catégorie</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead><tbody>
+      ${top.map(op => `<tr><td>${opDate(op).toLocaleDateString('fr-FR')}</td><td>${escHTML(libelle(op))}</td><td>${escHTML(op.categorie || '')}</td><td class="amt">${fmt(op.montant || 0)}</td><td class="pct">${pct(op.montant || 0)}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+
+  // ── Journal des opérations, groupé par mois ──
+  const chip = code => `<span class="chip sm" style="background:${colorOf[code] || OTHER}"></span>`;
+  const byMonth = {};
+  ops.forEach(op => {
+    const d = opDate(op);
+    const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    (byMonth[k] = byMonth[k] || []).push(op);
+  });
+  const journal = Object.keys(byMonth).sort().map(k => {
+    const list = byMonth[k];
+    const sub = list.reduce((s, o) => s + (o.montant || 0), 0);
+    const mLabel = opDate(list[0]).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    return `<tr class="mhead"><td colspan="4">${mLabel}</td><td class="amt">${fmt(sub)}</td></tr>` + list.map(op => {
+      const b = pcgBreakdown(op);
+      const main = `<tr class="op">
+        <td>${opDate(op).toLocaleDateString('fr-FR')}</td>
+        <td>${escHTML(libelle(op))}${op.description && libelle(op) !== op.description ? '<div class="sub">' + escHTML(op.description) + '</div>' : ''}</td>
+        <td>${escHTML(op.categorie || '')}</td>
+        <td class="code">${b.length > 1 ? '<span class="muted">réparti</span>' : (b[0] ? chip(b[0].code) + b[0].code : '')}</td>
+        <td class="amt">${fmt(op.montant || 0)}</td></tr>`;
+      const split = b.length > 1 ? b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${PCG_COMPTES[x.code] || ''}${op.lignes ? ' : ' + op.lignes.filter(l => (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${chip(x.code)}${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('') : '';
+      return main + split;
+    }).join('');
   }).join('');
 
-  // Détail par compte (option)
+  // ── Détail par compte (option) ──
   const withDetail = document.getElementById('recap-detail-comptes')?.checked;
   let detailHTML = '';
   if (withDetail) {
@@ -3259,57 +3369,138 @@ window.printRecapType = (year, kind) => {
       }
       pcgBreakdown(op).forEach(x => push(x.code, { d, lib: libelle(op), arts: [], m: x.montant }));
     });
-    detailHTML = `<h2 style="page-break-before:always">Détail par compte</h2>` +
-      Object.keys(groups).sort().map(c => {
+    const order = comptes.map(c => c.code).filter(c => groups[c]).concat(Object.keys(groups).filter(c => !comptes.find(x => x.code === c)));
+    detailHTML = `<section class="pb"><h2><span class="num">04</span>Détail par compte</h2>` +
+      order.map(c => {
         const list = groups[c];
         const tot = list.reduce((s, e) => s + e.m, 0);
         return `<div class="compte">
-          <div class="compte-head"><span class="code">${c}</span> · ${PCG_COMPTES[c] || ''}<span class="amt">${fmt(tot)}</span></div>
-          <table style="table-layout:fixed"><thead><tr><th style="width:80px">Date</th><th style="width:32%">Achat</th><th>Articles</th><th class="amt" style="width:90px">Montant</th></tr></thead><tbody>
-          ${list.map(e => `<tr><td>${e.d}</td><td>${escHTML(e.lib)}</td><td>${e.arts.length ? e.arts.map(x => `${escHTML(x.a)} <span class="sub">(${fmt(x.m)})</span>`).join('<br>') : '<span class="sub">—</span>'}</td><td class="amt">${fmt(e.m)}</td></tr>`).join('')}
+          <div class="compte-head" style="border-left-color:${colorOf[c] || OTHER}"><span class="code">${c}</span><span>${PCG_COMPTES[c] || ''}</span><span class="amt">${fmt(tot)}</span></div>
+          <table class="tbl fixed"><thead><tr><th style="width:84px">Date</th><th style="width:34%">Achat</th><th>Articles</th><th class="amt" style="width:90px">Montant</th></tr></thead><tbody>
+          ${list.map(e => `<tr><td>${e.d}</td><td>${escHTML(e.lib)}</td><td>${e.arts.length ? e.arts.map(x => `${escHTML(x.a)} <span class="muted">(${fmt(x.m)})</span>`).join('<br>') : '<span class="muted">—</span>'}</td><td class="amt">${fmt(e.m)}</td></tr>`).join('')}
           </tbody></table></div>`;
-      }).join('');
+      }).join('') + `</section>`;
   }
 
-  const titre = (isE ? 'Entrées' : 'Sorties') + ' — exercice ' + exerciceLabel(year);
-  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>PTG ${titre}</title>
+  // ── Chiffres clés ──
+  const top1 = comptes[0];
+  const activeMonths = months.filter(m => m.n > 0).length;
+  const kpis = [
+    { l: isE ? 'Total des entrées' : 'Total des sorties', v: fmt(total), hero: true },
+    { l: 'Opérations', v: ops.length, s: activeMonths + ' mois actif' + (activeMonths > 1 ? 's' : '') },
+    { l: 'Moyenne par opération', v: fmt(total / ops.length) },
+    { l: 'Premier poste', v: top1 ? top1.code : '—', s: top1 ? (PCG_COMPTES[top1.code] || '') + ' · ' + pct(top1.v) : '' },
+  ];
+
+  const titre = isE ? 'Rapport des entrées' : 'Rapport des sorties';
+  const logo = new URL('icon-192.png', location.href).href;
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>PTG — ${titre} ${exerciceLabel(year)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  @page { size: A4; margin: 14mm; }
-  body { font-family: Arial, sans-serif; color: #222; font-size: 12px; margin: 0; }
-  h1 { font-size: 20px; margin: 0 0 4px; border-bottom: 3px solid ${isE ? '#2ecc8a' : '#e05555'}; padding-bottom: 8px; }
-  h2 { font-size: 14px; margin: 22px 0 8px; }
-  .meta { color: #666; font-size: 12px; margin-bottom: 14px; }
+  @page { size: A4; margin: 12mm 12mm 14mm; @bottom-center { content: "Play Thau'Gether · ${titre} ${exerciceLabel(year)} · page " counter(page) " / " counter(pages); font: 8pt Inter, Arial, sans-serif; color: #8a8984; } }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Inter, Arial, sans-serif; color: #1b1b1a; font-size: 11px; margin: 0; background: #fff; }
+  .mono, .amt, .code, .pct, .kpi-v, .donut-v { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .hero { background: #16162a; color: #fff; border-radius: 14px; padding: 16px 22px; display: flex; align-items: center; gap: 18px; position: relative; overflow: hidden; }
+  .hero::after { content: ''; position: absolute; right: -60px; top: -60px; width: 240px; height: 240px; border-radius: 50%; background: ${ACC}; opacity: .22; }
+  .hero img { width: 54px; height: 54px; border-radius: 12px; background: #fff; }
+  .hero .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #a9a9c8; font-weight: 600; }
+  .hero h1 { font-size: 24px; margin: 3px 0 2px; font-weight: 800; letter-spacing: -.01em; }
+  .hero .p { color: #c9c9de; font-size: 11px; }
+  .hero .tag { margin-left: auto; z-index: 1; background: ${ACC}; color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 999px; font-size: 11px; }
+  .kpis { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr; gap: 10px; margin: 14px 0 6px; }
+  .kpi { background: #f6f6f3; border-radius: 12px; padding: 12px 14px; }
+  .kpi.hero-k { background: ${ACC_SOFT}; }
+  .kpi-l { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: #6b6a65; font-weight: 600; }
+  .kpi-v { font-size: 18px; font-weight: 600; margin-top: 4px; color: #111; }
+  .kpi.hero-k .kpi-v { color: ${ACC}; font-size: 21px; }
+  .kpi-s { font-size: 9.5px; color: #6b6a65; margin-top: 2px; }
+  h2 { font-size: 13px; font-weight: 700; margin: 14px 0 8px; display: flex; align-items: center; gap: 8px; }
+  h2 .num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fff; background: #16162a; border-radius: 6px; padding: 2px 6px; }
+  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #52514e; margin: 0 0 10px; font-weight: 700; }
+  .card { border: 1px solid #e6e5e0; border-radius: 12px; padding: 11px 14px; margin-bottom: 10px; break-inside: avoid; }
+  .split2 { display: grid; grid-template-columns: 175px 1fr; gap: 16px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .donut-v { font-size: 15px; font-weight: 600; fill: #111; }
+  .donut-s { font-size: 9px; fill: #6b6a65; font-family: Inter, Arial, sans-serif; }
   table { width: 100%; border-collapse: collapse; }
-  th { background: #f2f2f2; text-align: left; padding: 6px 8px; font-size: 10px; text-transform: uppercase; border-bottom: 2px solid #ccc; }
-  td { padding: 5px 8px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
-  td.amt, th.amt { text-align: right; font-family: monospace; white-space: nowrap; }
-  td.code { font-family: monospace; white-space: nowrap; }
-  tr.split td { border-bottom: none; color: #666; font-size: 11px; padding-top: 1px; padding-bottom: 1px; }
-  .sub { color: #888; font-size: 10px; }
-  .total td { font-weight: bold; border-top: 2px solid #333; border-bottom: none; }
-  tr { page-break-inside: avoid; }
-  .footer { margin-top: 24px; font-size: 10px; color: #999; text-align: center; }
-  .compte { margin-bottom: 18px; page-break-inside: avoid; }
-  .compte-head { display: flex; gap: 6px; font-weight: bold; font-size: 13px; background: #f7f7f7; padding: 7px 8px; border-left: 4px solid ${isE ? '#2ecc8a' : '#e05555'}; }
-  .compte-head .amt { margin-left: auto; font-family: monospace; }
-  .compte-head .code { font-family: monospace; }
-  .compte .sub { font-size: 11px; color: #888; }
+  .tbl th, .leg th { text-align: left; font-size: 8.5px; text-transform: uppercase; letter-spacing: .08em; color: #6b6a65; font-weight: 600; padding: 6px 8px; border-bottom: 1.5px solid #d8d7d1; }
+  .tbl td, .leg td { padding: 5px 8px; border-bottom: 1px solid #efeee9; vertical-align: top; }
+  .tbl.fixed { table-layout: fixed; }
+  .amt, th.amt { text-align: right; white-space: nowrap; }
+  .pct, th.pct { text-align: right; white-space: nowrap; color: #6b6a65; }
+  .code { white-space: nowrap; }
+  .chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+  .chip.sm { width: 8px; height: 8px; margin-right: 5px; vertical-align: 0; }
+  .leg tfoot td { font-weight: 700; border-top: 1.5px solid #1b1b1a; border-bottom: none; }
+  .grid { stroke: #ecebe6; stroke-width: 1; }
+  .axis { font-size: 9px; fill: #6b6a65; font-family: Inter, Arial, sans-serif; }
+  .barlab { font-size: 9.5px; fill: #1b1b1a; font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+  .mini { margin-top: 6px; table-layout: fixed; }
+  .mini th { font-size: 8px; color: #6b6a65; font-weight: 600; text-transform: uppercase; padding: 3px 0; text-align: center; }
+  .mini td { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; text-align: center; padding: 2px 0; color: #1b1b1a; }
+  .hb { display: grid; grid-template-columns: 130px 1fr 74px; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .hb-l { font-size: 10.5px; font-weight: 500; line-height: 1.2; }
+  .hb-l span { display: block; font-size: 9px; color: #6b6a65; font-weight: 400; }
+  .hb-t { height: 8px; background: #f0efea; border-radius: 4px; overflow: hidden; }
+  .hb-f { height: 100%; border-radius: 4px; }
+  .hb-v { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-align: right; }
+  .muted { color: #8a8984; }
+  .sub { color: #8a8984; font-size: 9.5px; margin-top: 1px; }
+  tr.mhead td { background: #16162a; color: #fff; font-weight: 700; text-transform: capitalize; padding: 6px 8px; border: none; }
+  tr.mhead td.amt { color: #fff; }
+  tr.op:nth-child(even) td { background: #fafaf8; }
+  tr.split td { border-bottom: none; color: #6b6a65; font-size: 9.5px; padding-top: 1px; padding-bottom: 1px; }
+  tr.total td { font-weight: 700; border-top: 1.5px solid #1b1b1a; border-bottom: none; font-size: 12px; padding-top: 8px; }
+  tr { break-inside: avoid; }
+  .pb { break-before: page; }
+  .compte { margin-bottom: 14px; break-inside: avoid; }
+  .compte-head { display: flex; gap: 10px; align-items: center; font-weight: 700; font-size: 11.5px; background: #f6f6f3; padding: 8px 10px; border-left: 4px solid; border-radius: 0 8px 8px 0; margin-bottom: 4px; }
+  .compte-head .amt { margin-left: auto; }
+  .note { font-size: 9px; color: #8a8984; margin-top: 14px; line-height: 1.5; }
 </style></head><body>
-<h1>Play Thau'Gether — ${titre}</h1>
-<div class="meta">Période ${exercicePeriode(year)} · ${ops.length} opération${ops.length > 1 ? 's' : ''} · Édité le ${new Date().toLocaleDateString('fr-FR')}</div>
 
-<h2>Total par compte (Plan Comptable associatif)</h2>
-<table><thead><tr><th>Compte</th><th>Intitulé</th><th class="amt">Montant</th></tr></thead>
-<tbody>${comptesRows}<tr class="total"><td></td><td>Total ${isE ? 'entrées' : 'sorties'}</td><td class="amt">${fmt(total)}</td></tr></tbody></table>
+<div class="hero">
+  <img src="${logo}" alt="" onerror="this.style.display='none'"/>
+  <div>
+    <div class="k">Play Thau'Gether · Comptabilité</div>
+    <h1>${titre}</h1>
+    <div class="p">Exercice ${exerciceLabel(year)} · ${exercicePeriode(year)} · édité le ${new Date().toLocaleDateString('fr-FR')}</div>
+  </div>
+  <div class="tag">${isE ? 'ENTRÉES' : 'SORTIES'}</div>
+</div>
 
-<h2>Détail des opérations</h2>
-<table><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Compte</th><th class="amt">Montant</th></tr></thead>
-<tbody>${lignesRows}<tr class="total"><td></td><td colspan="3">Total ${isE ? 'entrées' : 'sorties'}</td><td class="amt">${fmt(total)}</td></tr></tbody></table>
+<div class="kpis">${kpis.map(k => `<div class="kpi${k.hero ? ' hero-k' : ''}"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div>${k.s ? `<div class="kpi-s">${escHTML(k.s)}</div>` : ''}</div>`).join('')}</div>
+
+<h2><span class="num">01</span>Répartition par compte (Plan Comptable associatif)</h2>
+<div class="card split2">
+  <div>${donut}</div>
+  <table class="leg"><thead><tr><th>Compte</th><th>Intitulé</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead>
+    <tbody>${legend}</tbody>
+    <tfoot><tr><td></td><td>Total</td><td class="amt">${fmt(total)}</td><td class="pct">100 %</td></tr></tfoot></table>
+</div>
+
+<h2><span class="num">02</span>Évolution sur l'exercice</h2>
+<div class="card">${bars}${monthsTable}</div>
+${special}
+
+<section class="pb">
+<h2><span class="num">03</span>Journal des ${isE ? 'entrées' : 'sorties'}</h2>
+<table class="tbl"><thead><tr><th style="width:78px">Date</th><th>Libellé</th><th style="width:120px">Catégorie</th><th style="width:78px">Compte</th><th class="amt" style="width:84px">Montant</th></tr></thead>
+<tbody>${journal}<tr class="total"><td></td><td colspan="3">Total ${isE ? 'des entrées' : 'des sorties'} · ${ops.length} opérations</td><td class="amt">${fmt(total)}</td></tr></tbody></table>
+<p class="note">Comptes issus du Plan Comptable associatif (règlement ANC 2018-06). Les virements caisse → banque et les dépôts d'espèces sont des mouvements de trésorerie et ne figurent pas dans ce rapport.</p>
+</section>
 
 ${detailHTML}
 
-<div class="footer">Play Thau'Gether · ${titre}</div>
-<script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
+<script>
+  Promise.all([
+    document.fonts ? document.fonts.ready : Promise.resolve(),
+    ...Array.from(document.images).map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))
+  ]).then(() => setTimeout(() => window.print(), 250));
+<\/script>
 </body></html>`;
 
   const w = window.open('', '_blank');

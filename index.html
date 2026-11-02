@@ -1097,7 +1097,7 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn-primary" onclick="ndfOpen(null)">+ Nouvelle note</button>
             <button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="ndfPrint(null)">🖨️ Fiche vierge</button>
-            <button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="ndfOpen(null, true)">+ Régularisation (déjà remboursée en espèces)</button>
+            <button class="btn-primary ndf-admin-only" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border);display:none" onclick="ndfOpen(null, true)">+ Régularisation (déjà remboursée en espèces)</button>
           </div>
         </div>
         <div class="ndf-filters" id="ndf-filters">
@@ -4046,6 +4046,7 @@ function ndfSubscribe() {
 }
 
 function ndfRenderAll() {
+  document.querySelectorAll('.ndf-admin-only').forEach(el => { el.style.display = currentUserData?.role === 'admin' ? '' : 'none'; });
   ndfRenderList();
   ndfRenderRecap();
 }
@@ -4198,11 +4199,13 @@ async function ndfUploadFiles(files, btn) {
 
 // ── Ouverture / édition ──
 window.ndfOpen = (id, regul = false) => {
+  if (regul && currentUserData?.role !== 'admin') { showToast('Régularisation réservée au bureau (admin)', 'error'); return; }
   const n = id ? allNotes.find(x => x.id === id) : null;
   if (id && !n) return;
   ndfEditingId = id;
   ndfRegul = !n && regul;
-  const locked = n?.statut === 'remboursee';
+  const isAdm = currentUserData?.role === 'admin';
+  const locked = n?.statut === 'remboursee' || (!!n && !isAdm && n.statut !== 'attente');
 
   document.getElementById('ndf-title').textContent = n ? 'Note de frais — ' + (ndfFullName(n) || 'sans nom') : (ndfRegul ? 'Régularisation — note déjà remboursée' : 'Nouvelle note de frais');
   document.getElementById('ndf-nom').value = n?.nom || '';
@@ -4236,7 +4239,8 @@ window.ndfOpen = (id, regul = false) => {
     const info = [];
     if (n.validateurNom) info.push(`Validée par ${escHTML(n.validateurNom)}${n.validateurFonction ? ' (' + escHTML(n.validateurFonction) + ')' : ''}${n.dateValidation ? ' le ' + ndfDateFR(n.dateValidation) : ''}`);
     if (n.statut === 'remboursee') info.push(`Remboursée ${n.modeRemboursement === 'especes' ? 'en espèces' : 'par virement'} le ${ndfDateFR(n.dateRemboursement)}`);
-    if (locked) info.push('🔒 Note verrouillée');
+    if (n.statut === 'remboursee') info.push('🔒 Note verrouillée');
+    else if (locked) info.push('🔒 Modifiable uniquement par le bureau (admin)');
     bar.innerHTML = `<div>${ndfBadges(n)}</div>${info.length ? `<div class="ndf-muted" style="margin-top:6px">${info.join(' · ')}</div>` : ''}`;
     bar.style.display = 'block';
   } else bar.style.display = 'none';
@@ -4253,8 +4257,8 @@ window.ndfOpen = (id, regul = false) => {
   // Actions
   const acts = [];
   if (n) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)" onclick="ndfPrint('${n.id}')">🖨️ Imprimer</button>`);
-  if (n?.statut === 'attente') acts.push(`<button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="ndfValidate('${n.id}')">✅ Valider</button>`);
-  if (n?.statut === 'validee') acts.push(`<button class="btn-primary" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red)" onclick="ndfRembourse('${n.id}')">💸 Marquer remboursée</button>`);
+  if (n?.statut === 'attente' && isAdm) acts.push(`<button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="ndfValidate('${n.id}')">✅ Valider</button>`);
+  if (n?.statut === 'validee' && isAdm) acts.push(`<button class="btn-primary" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red)" onclick="ndfRembourse('${n.id}')">💸 Marquer remboursée</button>`);
   if (n?.operationId) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="closeModal('modal-ndf');showDetail('${n.operationId}')">📋 Voir la sortie dans Compta</button>`);
   if (n && currentUserData?.role === 'admin') acts.push(`<button class="btn-danger" onclick="ndfDelete('${n.id}')">🗑️ Supprimer</button>`);
   document.getElementById('ndf-actions').innerHTML = acts.join('');
@@ -4327,11 +4331,10 @@ window.ndfSave = async () => {
         categorieCompta: regulExists ? null : regulCat, saisiCompta: true, operationId: null,
         createdBy: currentUser.email, createdAt: serverTimestamp(),
       };
-      const ref = await addDoc(collection(db, 'notesFrais'), note);
-      if (!regulExists) {
-        const opId = await ndfCreateOperation({ ...note, id: ref.id }, regulDate, 'especes', regulCat);
-        await updateDoc(ref, { operationId: opId });
-      }
+      // ID généré d'avance : la note (déjà « remboursée », donc verrouillée) est écrite en une seule fois
+      const ref = doc(collection(db, 'notesFrais'));
+      if (!regulExists) note.operationId = await ndfCreateOperation({ ...note, id: ref.id }, regulDate, 'especes', regulCat);
+      await setDoc(ref, note);
       await logAudit('ndf_regul', `Régularisation note de frais — ${data.prenom} ${data.nom} — ${data.total}€ remboursés en espèces le ${ndfDateFR(regulDate)}`);
       showToast(regulExists ? '✓ Régularisation enregistrée' : '✓ Régularisation enregistrée + sortie créée dans Compta', 'success');
     } else {
@@ -4398,6 +4401,7 @@ window.ndfValidate = (id) => {
   document.getElementById('modal-ndf-valid').classList.add('open');
 };
 window.ndfConfirmValidate = async () => {
+  if (currentUserData?.role !== 'admin') { showToast('Validation réservée au bureau (admin)', 'error'); return; }
   const n = allNotes.find(x => x.id === ndfActionId);
   if (!n) return;
   const vNom = document.getElementById('ndf-v-nom').value.trim();
@@ -4429,6 +4433,7 @@ window.ndfRembourse = (id) => {
   document.getElementById('modal-ndf-remb').classList.add('open');
 };
 window.ndfConfirmRembourse = async () => {
+  if (currentUserData?.role !== 'admin') { showToast('Remboursement réservé au bureau (admin)', 'error'); return; }
   const n = allNotes.find(x => x.id === ndfActionId);
   if (!n) return;
   if (n.statut !== 'validee') { showToast('La note doit être validée avant le remboursement', 'error'); return; }

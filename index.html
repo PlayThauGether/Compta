@@ -1080,7 +1080,11 @@
         <p style="font-size:13px;color:var(--text3);margin-bottom:16px">Bilan par exercice comptable (1er septembre → 31 août), en HTML imprimable ou CSV.</p>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px;cursor:pointer">
           <input type="checkbox" id="recap-detail-comptes" style="width:auto"/>
-          PDF : ajouter le détail des achats dans chaque compte
+          PDF Entrées / Sorties : ajouter le détail des achats dans chaque compte
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin:-6px 0 14px;cursor:pointer">
+          <input type="checkbox" id="recap-journal-annexe" style="width:auto"/>
+          Rapport financier AG : ajouter le journal complet en annexe
         </label>
         <div id="recap-years-list">
           <div class="empty-state"><div class="empty-icon">📭</div><p>Aucune donnée</p></div>
@@ -1548,10 +1552,11 @@
     </div>
     <div class="files-list" id="ndf-files-list"></div>
     <div class="form-row" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px">
-      <div class="form-group"><label>Nombre total</label><input type="number" min="0" id="ndf-nb-total" oninput="ndfCheckJustifs()"/></div>
+      <div class="form-group"><label>Nombre total (documents)</label><input type="number" min="0" id="ndf-nb-total" oninput="ndfCheckJustifs()"/></div>
       <div class="form-group"><label>dont papier</label><input type="number" min="0" id="ndf-nb-papier" oninput="ndfCheckJustifs()"/></div>
       <div class="form-group"><label>dont numérique</label><input type="number" min="0" id="ndf-nb-num" oninput="ndfCheckJustifs()"/></div>
     </div>
+    <p class="ndf-hint" style="margin-top:-6px">On compte les documents (factures, tickets), pas les pages ni les fichiers : un PDF de 2 pages = 1 justificatif.</p>
     <div id="ndf-justifs-warn" class="ndf-hint" style="color:var(--orange);display:none"></div>
 
     <div id="ndf-regul-box" style="display:none">
@@ -3376,9 +3381,10 @@ function renderRecapPage() {
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-primary" onclick="printRapportAG(${year})">📘 Rapport financier AG</button>
             <button class="btn-primary" style="background:var(--bg3);color:var(--green);border:1px solid var(--green)" onclick="printRecapType(${year},'entree')">🖨️ PDF Entrées</button>
             <button class="btn-primary" style="background:var(--bg3);color:var(--red);border:1px solid var(--red)" onclick="printRecapType(${year},'sortie')">🖨️ PDF Sorties</button>
-            <button class="btn-primary" onclick="downloadRecap(${year})">⬇️ HTML</button>
+            <button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="downloadRecap(${year})">⬇️ HTML</button>
             <button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="downloadRecapCSV(${year})">⬇️ CSV</button>
           </div>
         </div>
@@ -3386,256 +3392,206 @@ function renderRecapPage() {
   }).join('');
 }
 
-// ── PDF ENTRÉES / SORTIES (rapport stylé, via impression → « Enregistrer en PDF ») ──
-window.printRecapType = (year, kind) => {
-  const isE = kind === 'entree';
-  const ops = allOps.filter(op => exerciceOf(op) === year && op.type === kind)
-    .sort((a, b) => opDate(a) - opDate(b));
-  if (ops.length === 0) { showToast('Aucune ' + (isE ? 'entrée' : 'sortie') + ' sur cet exercice', 'error'); return; }
+// ══════════════════════════════════════════════════════════════
+// ── RAPPORTS PDF : moteur commun (Entrées, Sorties, Rapport AG) ──
+// Impression → « Enregistrer en PDF ». Toute modification de style ici
+// s'applique aux trois rapports.
+// ══════════════════════════════════════════════════════════════
+const RPT = {
+  PAL: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6'],
+  OTHER: '#a3a29c',
+  GREEN: '#16a06e', GREEN_SOFT: '#e6f6ef',
+  RED: '#d9403f', RED_SOFT: '#fbeaea',
+  BLUE: '#2a78d6', BLUE_SOFT: '#eaf2fc',
+  INK: '#16162a',
+};
 
-  const ACC = isE ? '#16a06e' : '#d9403f';
-  const ACC_SOFT = isE ? '#e6f6ef' : '#fbeaea';
-  const PAL = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6'];
-  const OTHER = '#a3a29c';
-  const total = ops.reduce((s, o) => s + (o.montant || 0), 0);
-  const pct = v => total ? (v / total * 100).toFixed(1).replace('.', ',') + ' %' : '—';
+// Libellés « en clair » des comptes, pour les lecteurs non comptables
+const RPT_PLAIN = {
+  '7541': 'Dons (soirées et dons manuels)', '756': 'Adhésions', '706': 'Billetterie et recettes d\'activités',
+  '74': 'Subventions', '758': 'Autres recettes',
+  '6068': 'Boissons et nourriture des soirées', '6063': 'Matériel (jeux, déguisements, accessoires)',
+  '6064': 'Fournitures (papeterie, consommables)', '62341': 'Lots des jeux (quiz, blind test)',
+  '62342': 'Cadeaux (remerciements, partenaires)', '6234': 'Lots et cadeaux', '606': 'Achats divers',
+  '613': 'Locations', '623': 'Communication (impressions, affiches)', '625': 'Déplacements',
+  '627': 'Frais bancaires', '628': 'Dépenses diverses', '6257': 'Repas des bénévoles', '651': 'Abonnements et licences',
+};
+const rptPlain = c => RPT_PLAIN[c] || PCG_COMPTES[c] || c;
+const rptPct = (v, t) => t ? (v / t * 100).toFixed(1).replace('.', ',') + ' %' : '—';
+const rptD = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const libelle = op => {
-    if (op.helloasso) return 'HelloAsso — ' + opDate(op).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-    if (isE && (op.typeSoiree || op.lieu)) {
-      const don = op.soireeAnnulee ? 'Soirée annulée' : op.pasDeDon ? 'Pas de dons' : (op.donMode === 'bancaire' ? 'Don bancaire' : 'Don liquide');
-      return [op.typeSoiree, op.lieu].filter(Boolean).join(' ') + ' · ' + don;
-    }
-    return op.description || '';
-  };
-
-  // ── Totaux par compte ──
-  const parCompte = {};
-  ops.forEach(op => pcgBreakdown(op).forEach(x => { parCompte[x.code] = (parCompte[x.code] || 0) + x.montant; }));
-  const comptes = Object.entries(parCompte).map(([code, v]) => ({ code, v })).filter(c => Math.abs(c.v) > 0.004).sort((a, b) => b.v - a.v);
-  const colorOf = {};
-  comptes.forEach((c, i) => { colorOf[c.code] = i < 7 ? PAL[i] : OTHER; });
-  const slices = comptes.slice(0, 7).map(c => ({ v: c.v, color: colorOf[c.code] }));
-  if (comptes.length > 7) slices.push({ v: comptes.slice(7).reduce((s, c) => s + c.v, 0), color: OTHER });
-
-  const donut = (() => {
-    const pos = slices.filter(x => x.v > 0);
-    const T = pos.reduce((s, x) => s + x.v, 0) || 1;
-    const cx = 100, cy = 100, R = 92, r = 60;
-    const P = (rad, a) => (cx + rad * Math.cos(a)).toFixed(2) + ' ' + (cy + rad * Math.sin(a)).toFixed(2);
-    let a0 = -Math.PI / 2;
-    const gap = pos.length > 1 ? 0.022 : 0;
-    const paths = pos.map(x => {
-      const ang = x.v / T * 2 * Math.PI;
-      if (ang >= 2 * Math.PI - 1e-6) return `<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="${x.color}" stroke-width="${R - r}"/>`;
-      const s = a0 + gap / 2;
-      let e = a0 + ang - gap / 2;
-      if (e <= s) e = s + 0.002;
-      a0 += ang;
-      const large = (e - s) > Math.PI ? 1 : 0;
-      return `<path d="M ${P(R, s)} A ${R} ${R} 0 ${large} 1 ${P(R, e)} L ${P(r, e)} A ${r} ${r} 0 ${large} 0 ${P(r, s)} Z" fill="${x.color}"/>`;
-    }).join('');
-    return `<svg viewBox="0 0 200 200" width="165" height="165" role="img" aria-label="Répartition par compte">${paths}
-      <text x="100" y="98" text-anchor="middle" class="donut-v">${fmt(total)}</text>
-      <text x="100" y="118" text-anchor="middle" class="donut-s">${comptes.length} compte${comptes.length > 1 ? 's' : ''}</text></svg>`;
-  })();
-
-  const legend = comptes.map(c => `<tr>
-      <td style="white-space:nowrap;width:74px"><span class="chip" style="background:${colorOf[c.code]}"></span><span class="code">${c.code}</span></td>
-      <td>${PCG_COMPTES[c.code] || ''}</td>
-      <td class="amt">${fmt(c.v)}</td>
-      <td class="pct">${pct(c.v)}</td>
-    </tr>`).join('');
-
-  // ── Mois par mois (sept → août) ──
-  const months = Array.from({ length: 12 }, (_, i) => {
+function rptMonths(year) {
+  return Array.from({ length: 12 }, (_, i) => {
     const d = new Date(year, 8 + i, 1);
-    return { y: d.getFullYear(), m: d.getMonth(), label: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), v: 0, n: 0 };
+    return { y: d.getFullYear(), m: d.getMonth(), start: d, end: new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999),
+      label: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), long: d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) };
   });
-  ops.forEach(op => {
-    const d = opDate(op);
-    const mm = months.find(x => x.y === d.getFullYear() && x.m === d.getMonth());
-    if (mm) { mm.v += op.montant || 0; mm.n++; }
-  });
-  const bars = (() => {
-    const W = 660, H = 150, padL = 46, padB = 24, padT = 16;
-    const maxV = Math.max(...months.map(x => x.v), 1);
-    const step = Math.pow(10, Math.floor(Math.log10(maxV)));
-    const niceMax = Math.ceil(maxV / (step / 2)) * (step / 2);
-    const iw = W - padL - 8, ih = H - padB - padT;
-    const bw = iw / 12;
-    const best = months.reduce((a, b) => b.v > a.v ? b : a, months[0]);
-    const ticks = [0, 0.5, 1].map(t => {
-      const yy = padT + ih - t * ih;
-      return `<line x1="${padL}" x2="${W - 8}" y1="${yy}" y2="${yy}" class="grid"/><text x="${padL - 6}" y="${yy + 3}" text-anchor="end" class="axis">${Math.round(niceMax * t)} €</text>`;
-    }).join('');
-    const rects = months.map((mo, i) => {
-      const h = mo.v > 0 ? Math.max(mo.v / niceMax * ih, 2) : 0;
-      const x = padL + i * bw + bw * 0.22, w = bw * 0.56, y = padT + ih - h;
-      const rr = Math.min(4, w / 2, h);
-      const bar = h > 0 ? `<path d="M ${x} ${y + h} V ${y + rr} Q ${x} ${y} ${x + rr} ${y} H ${x + w - rr} Q ${x + w} ${y} ${x + w} ${y + rr} V ${y + h} Z" fill="${mo === best ? ACC : ACC + '99'}"/>` : '';
-      const lab = mo === best && mo.v > 0 ? `<text x="${x + w / 2}" y="${y - 5}" text-anchor="middle" class="barlab">${fmt(mo.v)}</text>` : '';
-      return bar + lab + `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle" class="axis">${mo.label}</text>`;
-    }).join('');
-    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Montants par mois">${ticks}${rects}</svg>`;
-  })();
-  const monthsTable = `<table class="mini"><tr>${months.map(m => `<th>${m.label}</th>`).join('')}</tr><tr>${months.map(m => `<td>${m.v ? fmt(m.v).replace(' €', '') : '—'}</td>`).join('')}</tr></table>`;
+}
+const rptMonthOf = (months, d) => months.find(x => x.y === d.getFullYear() && x.m === d.getMonth());
 
-  // ── Bloc spécifique ──
-  const hbars = (rows) => {
-    const max = Math.max(...rows.map(r => r.v), 1);
-    return rows.map(r => `<div class="hb"><div class="hb-l">${escHTML(r.label)}${r.sub ? `<span>${r.sub}</span>` : ''}</div>
-      <div class="hb-t"><div class="hb-f" style="width:${(r.v / max * 100).toFixed(1)}%;background:${ACC}"></div></div>
-      <div class="hb-v">${fmt(r.v)}</div></div>`).join('');
-  };
-  let special = '';
-  if (isE) {
-    const origine = {};
-    ops.forEach(op => {
-      const k = op.helloasso ? 'HelloAsso' : op.donMode === 'bancaire' ? 'Dons bancaires' : (op.typeSoiree || op.donMode) ? 'Dons en liquide' : (op.categorie || 'Autres entrées');
-      origine[k] = (origine[k] || 0) + (op.montant || 0);
-    });
-    const parType = {};
-    ops.filter(o => o.typeSoiree).forEach(op => {
-      const t = parType[op.typeSoiree] = parType[op.typeSoiree] || { v: 0, n: 0 };
-      t.v += op.montant || 0; t.n++;
-    });
-    special = `<div class="grid2">
-      <div class="card"><h3>Origine des entrées</h3>${hbars(Object.entries(origine).sort((a, b) => b[1] - a[1]).map(([label, v]) => ({ label, v })))}</div>
-      <div class="card"><h3>Dons par type de soirée</h3>${Object.keys(parType).length ? hbars(Object.entries(parType).sort((a, b) => b[1].v - a[1].v).slice(0, 7).map(([label, t]) => ({ label, v: t.v, sub: t.n + ' soirée' + (t.n > 1 ? 's' : '') }))) : '<p class="muted">Aucune soirée renseignée</p>'}</div>
-    </div>`;
-  } else {
-    const top = [...ops].sort((a, b) => (b.montant || 0) - (a.montant || 0)).slice(0, 5);
-    special = `<div class="card"><h3>Les 5 plus grosses dépenses</h3>
-      <table class="tbl"><thead><tr><th style="width:90px">Date</th><th>Achat</th><th>Catégorie</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead><tbody>
-      ${top.map(op => `<tr><td>${opDate(op).toLocaleDateString('fr-FR')}</td><td>${escHTML(libelle(op))}</td><td>${escHTML(op.categorie || '')}</td><td class="amt">${fmt(op.montant || 0)}</td><td class="pct">${pct(op.montant || 0)}</td></tr>`).join('')}
-      </tbody></table></div>`;
-  }
+// Totaux par compte + couleurs (7 premiers colorés, le reste en gris)
+function rptComptes(ops) {
+  const acc = {};
+  ops.forEach(op => pcgBreakdown(op).forEach(x => { acc[x.code] = (acc[x.code] || 0) + x.montant; }));
+  const list = Object.entries(acc).map(([code, v]) => ({ code, v })).filter(c => Math.abs(c.v) > 0.004).sort((a, b) => b.v - a.v);
+  const colorOf = {};
+  list.forEach((c, i) => { colorOf[c.code] = i < RPT.PAL.length ? RPT.PAL[i] : RPT.OTHER; });
+  const slices = list.slice(0, RPT.PAL.length).map(c => ({ v: c.v, color: colorOf[c.code] }));
+  if (list.length > RPT.PAL.length) slices.push({ v: list.slice(RPT.PAL.length).reduce((s, c) => s + c.v, 0), color: RPT.OTHER });
+  return { list, colorOf, slices, total: list.reduce((s, c) => s + c.v, 0) };
+}
 
-  // ── Journal des opérations, groupé par mois ──
-  const chip = code => `<span class="chip sm" style="background:${colorOf[code] || OTHER}"></span>`;
-  const byMonth = {};
-  ops.forEach(op => {
-    const d = opDate(op);
-    const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    (byMonth[k] = byMonth[k] || []).push(op);
-  });
-  const journal = Object.keys(byMonth).sort().map(k => {
-    const list = byMonth[k];
-    const sub = list.reduce((s, o) => s + (o.montant || 0), 0);
-    const mLabel = opDate(list[0]).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-    return `<tr class="mhead"><td colspan="4">${mLabel}</td><td class="amt">${fmt(sub)}</td></tr>` + list.map(op => {
-      const b = pcgBreakdown(op);
-      const main = `<tr class="op">
-        <td>${opDate(op).toLocaleDateString('fr-FR')}</td>
-        <td>${escHTML(libelle(op))}${op.description && libelle(op) !== op.description ? '<div class="sub">' + escHTML(op.description) + '</div>' : ''}</td>
-        <td>${escHTML(op.categorie || '')}</td>
-        <td class="code">${b.length > 1 ? '<span class="muted">réparti</span>' : (b[0] ? chip(b[0].code) + b[0].code : '')}</td>
-        <td class="amt">${fmt(op.montant || 0)}</td></tr>`;
-      const split = b.length > 1 ? b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${PCG_COMPTES[x.code] || ''}${op.lignes ? ' : ' + op.lignes.filter(l => (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${chip(x.code)}${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('') : '';
-      return main + split;
-    }).join('');
+function rptDonut(slices, centerV, centerS, size = 165) {
+  const pos = slices.filter(x => x.v > 0);
+  const T = pos.reduce((s, x) => s + x.v, 0) || 1;
+  const cx = 100, cy = 100, R = 92, r = 60;
+  const P = (rad, a) => (cx + rad * Math.cos(a)).toFixed(2) + ' ' + (cy + rad * Math.sin(a)).toFixed(2);
+  let a0 = -Math.PI / 2;
+  const gap = pos.length > 1 ? 0.022 : 0;
+  const paths = pos.map(x => {
+    const ang = x.v / T * 2 * Math.PI;
+    if (ang >= 2 * Math.PI - 1e-6) return `<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="${x.color}" stroke-width="${R - r}"/>`;
+    const s = a0 + gap / 2;
+    let e = a0 + ang - gap / 2;
+    if (e <= s) e = s + 0.002;
+    a0 += ang;
+    const large = (e - s) > Math.PI ? 1 : 0;
+    return `<path d="M ${P(R, s)} A ${R} ${R} 0 ${large} 1 ${P(R, e)} L ${P(r, e)} A ${r} ${r} 0 ${large} 0 ${P(r, s)} Z" fill="${x.color}"/>`;
+  }).join('') || `<circle cx="100" cy="100" r="76" fill="none" stroke="#ecebe6" stroke-width="32"/>`;
+  return `<svg viewBox="0 0 200 200" width="${size}" height="${size}" role="img">${paths}
+    <text x="100" y="98" text-anchor="middle" class="donut-v">${centerV}</text>
+    <text x="100" y="118" text-anchor="middle" class="donut-s">${centerS}</text></svg>`;
+}
+
+function rptLegend(comp, totalLabel) {
+  return `<table class="leg"><thead><tr><th>Compte</th><th>Poste</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead>
+    <tbody>${comp.list.map(c => `<tr>
+      <td style="white-space:nowrap;width:74px"><span class="chip" style="background:${comp.colorOf[c.code]}"></span><span class="code">${c.code}</span></td>
+      <td>${rptPlain(c.code)}${RPT_PLAIN[c.code] && PCG_COMPTES[c.code] ? `<div class="sub">${PCG_COMPTES[c.code]}</div>` : ''}</td>
+      <td class="amt">${fmt(c.v)}</td><td class="pct">${rptPct(c.v, comp.total)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucune opération</td></tr>'}</tbody>
+    <tfoot><tr><td></td><td>${totalLabel}</td><td class="amt">${fmt(comp.total)}</td><td class="pct">100 %</td></tr></tfoot></table>`;
+}
+
+function rptNiceMax(v) {
+  if (v <= 0) return 1;
+  const step = Math.pow(10, Math.floor(Math.log10(v)));
+  return Math.ceil(v / (step / 2)) * (step / 2);
+}
+
+// Histogramme mensuel : 1 ou 2 séries côte à côte (une seule échelle)
+function rptBars(months, series, H = 160) {
+  const W = 660, padL = 50, padB = 22, padT = 16;
+  const maxV = Math.max(1, ...series.flatMap(s => months.map(m => m[s.key] || 0)));
+  const niceMax = rptNiceMax(maxV);
+  const iw = W - padL - 8, ih = H - padB - padT, bw = iw / 12;
+  const ticks = [0, 0.5, 1].map(t => {
+    const yy = padT + ih - t * ih;
+    return `<line x1="${padL}" x2="${W - 8}" y1="${yy}" y2="${yy}" class="grid"/><text x="${padL - 6}" y="${yy + 3}" text-anchor="end" class="axis">${Math.round(niceMax * t)} €</text>`;
   }).join('');
+  let best = null;
+  series.forEach((s, si) => months.forEach((m, i) => { const v = m[s.key] || 0; if (!best || v > best.v) best = { v, si, i }; }));
+  const n = series.length, groupW = bw * (n === 1 ? 0.56 : 0.72), w = (groupW - (n - 1) * 2) / n;
+  const bars = months.map((m, i) => {
+    const gx = padL + i * bw + (bw - groupW) / 2;
+    return series.map((s, si) => {
+      const v = m[s.key] || 0;
+      const h = v > 0 ? Math.max(v / niceMax * ih, 2) : 0;
+      const x = gx + si * (w + 2), y = padT + ih - h, rr = Math.min(3, w / 2, h);
+      const isBest = best && best.si === si && best.i === i && v > 0;
+      const bar = h > 0 ? `<path d="M ${x} ${y + h} V ${y + rr} Q ${x} ${y} ${x + rr} ${y} H ${x + w - rr} Q ${x + w} ${y} ${x + w} ${y + rr} V ${y + h} Z" fill="${s.color}"${n === 1 && !isBest ? ' fill-opacity="0.6"' : ''}/>` : '';
+      const lab = isBest ? `<text x="${x + w / 2}" y="${y - 4}" text-anchor="middle" class="barlab">${fmt(v)}</text>` : '';
+      return bar + lab;
+    }).join('') + `<text x="${gx + groupW / 2}" y="${H - 6}" text-anchor="middle" class="axis">${m.label}</text>`;
+  }).join('');
+  const legend = n > 1 ? `<div class="chart-leg">${series.map(s => `<span><span class="chip" style="background:${s.color}"></span>${s.label}</span>`).join('')}</div>` : '';
+  return legend + `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${ticks}${bars}</svg>`;
+}
 
-  // ── Détail par compte (option) ──
-  const withDetail = document.getElementById('recap-detail-comptes')?.checked;
-  let detailHTML = '';
-  if (withDetail) {
-    const groups = {};
-    const push = (code, e) => { (groups[code] = groups[code] || []).push(e); };
-    ops.forEach(op => {
-      const d = opDate(op).toLocaleDateString('fr-FR');
-      if (op.helloasso) {
-        pcgBreakdown(op).forEach(x => push(x.code, { d, lib: libelle(op), arts: [{ a: x.code === '756' ? 'Adhésions' : x.code === '7541' ? 'Dons' : 'Autre', m: x.montant }], m: x.montant }));
-        return;
-      }
-      if (op.lignes && op.lignes.length) {
-        const base = PCG_CAT[op.categorie] || (isE ? '758' : '628');
-        const acc = {};
-        let reste = op.montant || 0;
-        op.lignes.forEach(l => {
-          const c = PCG_CAT[l.categorie] || base;
-          (acc[c] = acc[c] || []).push({ a: l.article || 'Article', m: l.montant || 0 });
-          reste -= (l.montant || 0);
-        });
-        if (Math.abs(reste) > 0.005) (acc[base] = acc[base] || []).push({ a: 'Reste du ticket (non détaillé)', m: reste });
-        Object.entries(acc).forEach(([c, arts]) => push(c, { d, lib: libelle(op), arts, m: arts.reduce((s, x) => s + x.m, 0) }));
-        return;
-      }
-      pcgBreakdown(op).forEach(x => push(x.code, { d, lib: libelle(op), arts: [], m: x.montant }));
-    });
-    const order = comptes.map(c => c.code).filter(c => groups[c]).concat(Object.keys(groups).filter(c => !comptes.find(x => x.code === c)));
-    detailHTML = `<section class="pb"><h2><span class="num">04</span>Détail par compte</h2>` +
-      order.map(c => {
-        const list = groups[c];
-        const tot = list.reduce((s, e) => s + e.m, 0);
-        return `<div class="compte">
-          <div class="compte-head" style="border-left-color:${colorOf[c] || OTHER}"><span class="code">${c}</span><span>${PCG_COMPTES[c] || ''}</span><span class="amt">${fmt(tot)}</span></div>
-          <table class="tbl fixed"><thead><tr><th style="width:84px">Date</th><th style="width:34%">Achat</th><th>Articles</th><th class="amt" style="width:90px">Montant</th></tr></thead><tbody>
-          ${list.map(e => `<tr><td>${e.d}</td><td>${escHTML(e.lib)}</td><td>${e.arts.length ? e.arts.map(x => `${escHTML(x.a)} <span class="muted">(${fmt(x.m)})</span>`).join('<br>') : '<span class="muted">—</span>'}</td><td class="amt">${fmt(e.m)}</td></tr>`).join('')}
-          </tbody></table></div>`;
-      }).join('') + `</section>`;
-  }
+// Courbe de trésorerie (une série, zéro visible si négatif)
+function rptLine(points, color, H = 150) {
+  const W = 660, padL = 54, padR = 16, padB = 22, padT = 18;
+  const vals = points.map(p => p.v);
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals, 1);
+  hi = rptNiceMax(hi);
+  if (lo < 0) lo = -rptNiceMax(-lo);
+  const iw = W - padL - padR, ih = H - padB - padT;
+  const X = i => padL + (points.length > 1 ? i * iw / (points.length - 1) : iw / 2);
+  const Y = v => padT + ih - (v - lo) / (hi - lo) * ih;
+  const ticks = [lo, (lo + hi) / 2, hi].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${Y(v)}" y2="${Y(v)}" class="grid"/><text x="${padL - 6}" y="${Y(v) + 3}" text-anchor="end" class="axis">${Math.round(v)} €</text>`).join('');
+  const zero = lo < 0 ? `<line x1="${padL}" x2="${W - padR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#8a8984" stroke-width="1" stroke-dasharray="3 3"/>` : '';
+  const path = points.map((p, i) => `${i ? 'L' : 'M'} ${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(' ');
+  const area = `${path} L ${X(points.length - 1).toFixed(1)} ${Y(Math.max(lo, 0)).toFixed(1)} L ${X(0).toFixed(1)} ${Y(Math.max(lo, 0)).toFixed(1)} Z`;
+  const last = points.length - 1;
+  const dots = points.map((p, i) => `<circle cx="${X(i)}" cy="${Y(p.v)}" r="${i === 0 || i === last ? 4 : 2.6}" fill="#fff" stroke="${color}" stroke-width="2"/>`).join('');
+  const labs = [0, last].map(i => `<text x="${X(i) + (i === 0 ? 6 : -6)}" y="${Y(points[i].v) - 9}" text-anchor="${i === 0 ? 'start' : 'end'}" class="barlab">${fmt(points[i].v)}</text>`).join('');
+  const xl = points.map((p, i) => `<text x="${X(i)}" y="${H - 6}" text-anchor="middle" class="axis">${p.label}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${ticks}${zero}<path d="${area}" fill="${color}" fill-opacity="0.08"/><path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>${dots}${labs}${xl}</svg>`;
+}
 
-  // ── Chiffres clés ──
-  const top1 = comptes[0];
-  const activeMonths = months.filter(m => m.n > 0).length;
-  const kpis = [
-    { l: isE ? 'Total des entrées' : 'Total des sorties', v: fmt(total), hero: true },
-    { l: 'Opérations', v: ops.length, s: activeMonths + ' mois actif' + (activeMonths > 1 ? 's' : '') },
-    { l: 'Moyenne par opération', v: fmt(total / ops.length) },
-    { l: 'Premier poste', v: top1 ? top1.code : '—', s: top1 ? (PCG_COMPTES[top1.code] || '') + ' · ' + pct(top1.v) : '' },
-  ];
+function rptHBars(rows, color) {
+  const max = Math.max(...rows.map(r => r.v), 1);
+  return rows.map(r => `<div class="hb"><div class="hb-l">${escHTML(r.label)}${r.sub ? `<span>${r.sub}</span>` : ''}</div>
+    <div class="hb-t"><div class="hb-f" style="width:${(Math.max(r.v, 0) / max * 100).toFixed(1)}%;background:${color}"></div></div>
+    <div class="hb-v">${fmt(r.v)}</div></div>`).join('') || '<p class="muted">Aucune donnée</p>';
+}
 
-  const titre = isE ? 'Rapport des entrées' : 'Rapport des sorties';
+function rptHero(kicker, title, sub, tag, accent) {
   const logo = new URL('icon-192.png', location.href).href;
-  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
-<title>PTG — ${titre} ${exerciceLabel(year)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<style>
-  @page { size: A4; margin: 12mm 12mm 14mm; @bottom-center { content: "Play Thau'Gether · ${titre} ${exerciceLabel(year)} · page " counter(page) " / " counter(pages); font: 8pt Inter, Arial, sans-serif; color: #8a8984; } }
+  return `<div class="hero" style="--acc:${accent}">
+    <img src="${logo}" alt="" onerror="this.style.display='none'"/>
+    <div><div class="k">${kicker}</div><h1>${title}</h1><div class="p">${sub}</div></div>
+    <div class="tag">${tag}</div></div>`;
+}
+
+function rptCSS(accent, accentSoft, footer) {
+  return `
+  @page { size: A4; margin: 12mm 12mm 14mm; @bottom-center { content: "${footer} · page " counter(page) " / " counter(pages); font: 8pt Inter, Arial, sans-serif; color: #8a8984; } }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Inter, Arial, sans-serif; color: #1b1b1a; font-size: 11px; margin: 0; background: #fff; }
   .mono, .amt, .code, .pct, .kpi-v, .donut-v { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-  .hero { background: #16162a; color: #fff; border-radius: 14px; padding: 16px 22px; display: flex; align-items: center; gap: 18px; position: relative; overflow: hidden; }
-  .hero::after { content: ''; position: absolute; right: -60px; top: -60px; width: 240px; height: 240px; border-radius: 50%; background: ${ACC}; opacity: .22; }
+  .hero { background: ${RPT.INK}; color: #fff; border-radius: 14px; padding: 16px 22px; display: flex; align-items: center; gap: 18px; position: relative; overflow: hidden; }
+  .hero::after { content: ''; position: absolute; right: -60px; top: -60px; width: 240px; height: 240px; border-radius: 50%; background: var(--acc); opacity: .22; }
   .hero img { width: 54px; height: 54px; border-radius: 12px; background: #fff; }
   .hero .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #a9a9c8; font-weight: 600; }
   .hero h1 { font-size: 24px; margin: 3px 0 2px; font-weight: 800; letter-spacing: -.01em; }
   .hero .p { color: #c9c9de; font-size: 11px; }
-  .hero .tag { margin-left: auto; z-index: 1; background: ${ACC}; color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 999px; font-size: 11px; }
-  .kpis { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr; gap: 10px; margin: 14px 0 6px; }
+  .hero .tag { margin-left: auto; z-index: 1; background: var(--acc); color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+  .lead { font-size: 13px; line-height: 1.55; margin: 14px 0 4px; padding: 12px 16px; border-left: 4px solid ${accent}; background: ${accentSoft}; border-radius: 0 10px 10px 0; }
+  .lead b { font-weight: 700; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 6px; }
   .kpi { background: #f6f6f3; border-radius: 12px; padding: 12px 14px; }
-  .kpi.hero-k { background: ${ACC_SOFT}; }
+  .kpi.hl { background: ${accentSoft}; }
   .kpi-l { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: #6b6a65; font-weight: 600; }
   .kpi-v { font-size: 18px; font-weight: 600; margin-top: 4px; color: #111; }
-  .kpi.hero-k .kpi-v { color: ${ACC}; font-size: 21px; }
   .kpi-s { font-size: 9.5px; color: #6b6a65; margin-top: 2px; }
   h2 { font-size: 13px; font-weight: 700; margin: 14px 0 8px; display: flex; align-items: center; gap: 8px; }
-  h2 .num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fff; background: #16162a; border-radius: 6px; padding: 2px 6px; }
-  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #52514e; margin: 0 0 10px; font-weight: 700; }
+  h2 .num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fff; background: ${RPT.INK}; border-radius: 6px; padding: 2px 6px; }
+  h2 .q { font-weight: 400; color: #6b6a65; font-size: 11px; margin-left: 4px; }
+  h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: #52514e; margin: 0 0 9px; font-weight: 700; }
   .card { border: 1px solid #e6e5e0; border-radius: 12px; padding: 11px 14px; margin-bottom: 10px; break-inside: avoid; }
   .split2 { display: grid; grid-template-columns: 175px 1fr; gap: 16px; align-items: center; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .explain { font-size: 10px; color: #52514e; line-height: 1.5; margin: 0 0 8px; }
   .donut-v { font-size: 15px; font-weight: 600; fill: #111; }
   .donut-s { font-size: 9px; fill: #6b6a65; font-family: Inter, Arial, sans-serif; }
   table { width: 100%; border-collapse: collapse; }
   .tbl th, .leg th { text-align: left; font-size: 8.5px; text-transform: uppercase; letter-spacing: .08em; color: #6b6a65; font-weight: 600; padding: 6px 8px; border-bottom: 1.5px solid #d8d7d1; }
-  .tbl td, .leg td { padding: 5px 8px; border-bottom: 1px solid #efeee9; vertical-align: top; }
+  .tbl td, .leg td { padding: 4.5px 8px; border-bottom: 1px solid #efeee9; vertical-align: top; }
   .tbl.fixed { table-layout: fixed; }
   .amt, th.amt { text-align: right; white-space: nowrap; }
   .pct, th.pct { text-align: right; white-space: nowrap; color: #6b6a65; }
   .code { white-space: nowrap; }
   .chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
   .chip.sm { width: 8px; height: 8px; margin-right: 5px; vertical-align: 0; }
-  .leg tfoot td { font-weight: 700; border-top: 1.5px solid #1b1b1a; border-bottom: none; }
+  .leg tfoot td, .tbl tfoot td { font-weight: 700; border-top: 1.5px solid #1b1b1a; border-bottom: none; }
   .grid { stroke: #ecebe6; stroke-width: 1; }
   .axis { font-size: 9px; fill: #6b6a65; font-family: Inter, Arial, sans-serif; }
   .barlab { font-size: 9.5px; fill: #1b1b1a; font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+  .chart-leg { display: flex; gap: 16px; font-size: 10px; color: #52514e; margin-bottom: 4px; }
   .mini { margin-top: 6px; table-layout: fixed; }
   .mini th { font-size: 8px; color: #6b6a65; font-weight: 600; text-transform: uppercase; padding: 3px 0; text-align: center; }
-  .mini td { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; text-align: center; padding: 2px 0; color: #1b1b1a; }
+  .mini td { font-family: 'JetBrains Mono', monospace; font-size: 8.3px; text-align: center; padding: 2px 0; color: #1b1b1a; }
+  .mini td.rl { font-family: Inter, Arial, sans-serif; text-align: left; font-weight: 600; color: #52514e; width: 62px; }
   .hb { display: grid; grid-template-columns: 130px 1fr 74px; gap: 8px; align-items: center; margin-bottom: 7px; }
   .hb-l { font-size: 10.5px; font-weight: 500; line-height: 1.2; }
   .hb-l span { display: block; font-size: 9px; color: #6b6a65; font-weight: 400; }
@@ -3643,9 +3599,9 @@ window.printRecapType = (year, kind) => {
   .hb-f { height: 100%; border-radius: 4px; }
   .hb-v { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-align: right; }
   .muted { color: #8a8984; }
-  .sub { color: #8a8984; font-size: 9.5px; margin-top: 1px; }
-  tr.mhead td { background: #16162a; color: #fff; font-weight: 700; text-transform: capitalize; padding: 6px 8px; border: none; }
-  tr.mhead td.amt { color: #fff; }
+  .sub { color: #8a8984; font-size: 9px; margin-top: 1px; }
+  .pos { color: ${RPT.GREEN}; } .neg { color: ${RPT.RED}; }
+  tr.mhead td { background: ${RPT.INK}; color: #fff; font-weight: 700; text-transform: capitalize; padding: 6px 8px; border: none; }
   tr.op:nth-child(even) td { background: #fafaf8; }
   tr.split td { border-bottom: none; color: #6b6a65; font-size: 9.5px; padding-top: 1px; padding-bottom: 1px; }
   tr.total td { font-weight: 700; border-top: 1.5px solid #1b1b1a; border-bottom: none; font-size: 12px; padding-top: 8px; }
@@ -3654,55 +3610,398 @@ window.printRecapType = (year, kind) => {
   .compte { margin-bottom: 14px; break-inside: avoid; }
   .compte-head { display: flex; gap: 10px; align-items: center; font-weight: 700; font-size: 11.5px; background: #f6f6f3; padding: 8px 10px; border-left: 4px solid; border-radius: 0 8px 8px 0; margin-bottom: 4px; }
   .compte-head .amt { margin-left: auto; }
-  .note { font-size: 9px; color: #8a8984; margin-top: 14px; line-height: 1.5; }
-</style></head><body>
+  .note { font-size: 9px; color: #8a8984; margin-top: 12px; line-height: 1.5; }
+  .gloss { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+  .gloss div { font-size: 10px; line-height: 1.45; color: #3a3935; }
+  .gloss b { color: #111; }
+  .toc { columns: 2; column-gap: 18px; font-size: 10.5px; line-height: 1.9; margin: 0; padding: 0; list-style: none; }
+  .toc span { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: #fff; background: ${RPT.INK}; border-radius: 4px; padding: 1px 5px; margin-right: 6px; }
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 10px; align-items: center; }
+  .flow .box { background: #f6f6f3; border-radius: 12px; padding: 12px 14px; text-align: center; }
+  .flow .box .l { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: #6b6a65; font-weight: 600; }
+  .flow .box .v { font-family: 'JetBrains Mono', monospace; font-size: 17px; font-weight: 600; margin-top: 4px; }
+  .flow .arrow { font-size: 18px; color: #8a8984; }
+  .cr { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .cr h3 { padding: 6px 8px; border-radius: 6px; color: #fff; margin-bottom: 4px; }
+  .result-bar { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: 12px; font-weight: 700; font-size: 13px; }
+  .hl-list { margin: 0; padding: 0 0 0 4px; list-style: none; }
+  .hl-list li { font-size: 11px; line-height: 1.5; padding: 4px 0 4px 18px; position: relative; border-bottom: 1px dashed #ecebe6; }
+  .hl-list li:last-child { border-bottom: none; }
+  .hl-list li::before { content: ''; position: absolute; left: 2px; top: 10px; width: 7px; height: 7px; border-radius: 2px; background: ${accent}; }
+  .sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .sign div { border: 1px solid #d8d7d1; border-radius: 10px; padding: 10px 12px; height: 88px; font-size: 10px; color: #52514e; }
+  .sign b { display: block; color: #111; font-size: 10.5px; margin-bottom: 4px; }
+  `;
+}
 
-<div class="hero">
-  <img src="${logo}" alt="" onerror="this.style.display='none'"/>
-  <div>
-    <div class="k">Play Thau'Gether · Comptabilité</div>
-    <h1>${titre}</h1>
-    <div class="p">Exercice ${exerciceLabel(year)} · ${exercicePeriode(year)} · édité le ${new Date().toLocaleDateString('fr-FR')}</div>
-  </div>
-  <div class="tag">${isE ? 'ENTRÉES' : 'SORTIES'}</div>
-</div>
-
-<div class="kpis">${kpis.map(k => `<div class="kpi${k.hero ? ' hero-k' : ''}"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div>${k.s ? `<div class="kpi-s">${escHTML(k.s)}</div>` : ''}</div>`).join('')}</div>
-
-<h2><span class="num">01</span>Répartition par compte (Plan Comptable associatif)</h2>
-<div class="card split2">
-  <div>${donut}</div>
-  <table class="leg"><thead><tr><th>Compte</th><th>Intitulé</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead>
-    <tbody>${legend}</tbody>
-    <tfoot><tr><td></td><td>Total</td><td class="amt">${fmt(total)}</td><td class="pct">100 %</td></tr></tfoot></table>
-</div>
-
-<h2><span class="num">02</span>Évolution sur l'exercice</h2>
-<div class="card">${bars}${monthsTable}</div>
-${special}
-
-<section class="pb">
-<h2><span class="num">03</span>Journal des ${isE ? 'entrées' : 'sorties'}</h2>
-<table class="tbl"><thead><tr><th style="width:78px">Date</th><th>Libellé</th><th style="width:120px">Catégorie</th><th style="width:78px">Compte</th><th class="amt" style="width:84px">Montant</th></tr></thead>
-<tbody>${journal}<tr class="total"><td></td><td colspan="3">Total ${isE ? 'des entrées' : 'des sorties'} · ${ops.length} opérations</td><td class="amt">${fmt(total)}</td></tr></tbody></table>
-<p class="note">Comptes issus du Plan Comptable associatif (règlement ANC 2018-06). Les virements caisse → banque et les dépôts d'espèces sont des mouvements de trésorerie et ne figurent pas dans ce rapport.</p>
-</section>
-
-${detailHTML}
-
-<script>
-  Promise.all([
-    document.fonts ? document.fonts.ready : Promise.resolve(),
-    ...Array.from(document.images).map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))
-  ]).then(() => setTimeout(() => window.print(), 250));
-<\/script>
-</body></html>`;
-
+function rptOpen(html) {
   const w = window.open('', '_blank');
   if (!w) { showToast('Autorise les fenêtres pop-up pour générer le PDF', 'error'); return; }
   w.document.open();
   w.document.write(html);
   w.document.close();
+}
+
+function rptDoc(title, css, body) {
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>${title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>${css}</style></head><body>${body}
+<script>
+  Promise.all([
+    document.fonts ? document.fonts.ready : Promise.resolve(),
+    ...Array.from(document.images).map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))
+  ]).then(() => setTimeout(() => window.print(), 250));
+<\/script></body></html>`;
+}
+
+// Libellé lisible d'une opération
+function rptLibelle(op) {
+  if (op.helloasso) return 'HelloAsso — ' + opDate(op).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  if (op.type === 'entree' && (op.typeSoiree || op.lieu)) {
+    const don = op.soireeAnnulee ? 'Soirée annulée' : op.pasDeDon ? 'Pas de dons' : (op.donMode === 'bancaire' ? 'Don bancaire' : 'Don liquide');
+    return [op.typeSoiree, op.lieu].filter(Boolean).join(' ') + ' · ' + don;
+  }
+  return op.description || '';
+}
+
+// Journal groupé par mois (partagé)
+function rptJournal(ops, colorOf, totalLabel) {
+  const chip = code => `<span class="chip sm" style="background:${colorOf[code] || RPT.OTHER}"></span>`;
+  const byMonth = {};
+  ops.forEach(op => { const d = opDate(op); const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); (byMonth[k] = byMonth[k] || []).push(op); });
+  const total = ops.reduce((s, o) => s + (o.type === 'sortie' ? -(o.montant || 0) : (o.montant || 0)), 0);
+  const mixed = ops.some(o => o.type === 'sortie') && ops.some(o => o.type === 'entree');
+  const signed = o => mixed ? (o.type === 'sortie' ? '−' : '+') + fmt(o.montant || 0) : fmt(o.montant || 0);
+  const rows = Object.keys(byMonth).sort().map(k => {
+    const list = byMonth[k];
+    const sub = list.reduce((s, o) => s + (mixed && o.type === 'sortie' ? -(o.montant || 0) : (o.montant || 0)), 0);
+    return `<tr class="mhead"><td colspan="4">${opDate(list[0]).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</td><td class="amt">${mixed ? (sub >= 0 ? '+' : '−') + fmt(Math.abs(sub)) : fmt(sub)}</td></tr>` + list.map(op => {
+      const b = pcgBreakdown(op);
+      const lib = rptLibelle(op);
+      return `<tr class="op"><td>${opDate(op).toLocaleDateString('fr-FR')}</td>
+        <td>${escHTML(lib)}${op.description && lib !== op.description ? '<div class="sub">' + escHTML(op.description) + '</div>' : ''}</td>
+        <td>${escHTML(op.categorie || '')}</td>
+        <td class="code">${b.length > 1 ? '<span class="muted">réparti</span>' : (b[0] ? chip(b[0].code) + b[0].code : '')}</td>
+        <td class="amt ${mixed ? (op.type === 'sortie' ? 'neg' : 'pos') : ''}">${signed(op)}</td></tr>` +
+        (b.length > 1 ? b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${rptPlain(x.code)}${op.lignes ? ' : ' + op.lignes.filter(l => (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${chip(x.code)}${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('') : '');
+    }).join('');
+  }).join('');
+  return `<table class="tbl"><thead><tr><th style="width:78px">Date</th><th>Libellé</th><th style="width:120px">Catégorie</th><th style="width:78px">Compte</th><th class="amt" style="width:88px">Montant</th></tr></thead>
+    <tbody>${rows}<tr class="total"><td></td><td colspan="3">${totalLabel} · ${ops.length} opérations</td><td class="amt">${mixed ? (total >= 0 ? '+' : '−') + fmt(Math.abs(total)) : fmt(Math.abs(total))}</td></tr></tbody></table>`;
+}
+
+// ── PDF ENTRÉES / SORTIES ──
+window.printRecapType = (year, kind) => {
+  const isE = kind === 'entree';
+  const ops = allOps.filter(op => exerciceOf(op) === year && op.type === kind).sort((a, b) => opDate(a) - opDate(b));
+  if (ops.length === 0) { showToast('Aucune ' + (isE ? 'entrée' : 'sortie') + ' sur cet exercice', 'error'); return; }
+
+  const ACC = isE ? RPT.GREEN : RPT.RED, ACC_SOFT = isE ? RPT.GREEN_SOFT : RPT.RED_SOFT;
+  const total = ops.reduce((s, o) => s + (o.montant || 0), 0);
+  const comp = rptComptes(ops);
+  const months = rptMonths(year);
+  months.forEach(m => { m.v = 0; m.n = 0; });
+  ops.forEach(op => { const mo = rptMonthOf(months, opDate(op)); if (mo) { mo.v += op.montant || 0; mo.n++; } });
+  const activeMonths = months.filter(m => m.n > 0).length;
+  const top1 = comp.list[0];
+  const best = months.reduce((a, b) => b.v > a.v ? b : a, months[0]);
+
+  // Partie propre à chaque rapport
+  let special = '';
+  if (isE) {
+    const origine = {};
+    ops.forEach(op => {
+      const k = op.helloasso ? 'HelloAsso' : op.donMode === 'bancaire' ? 'Dons bancaires' : (op.typeSoiree || op.donMode) ? 'Dons en liquide' : (op.categorie || 'Autres entrées');
+      origine[k] = (origine[k] || 0) + (op.montant || 0);
+    });
+    const parType = {};
+    ops.filter(o => o.typeSoiree).forEach(op => { const t = parType[op.typeSoiree] = parType[op.typeSoiree] || { v: 0, n: 0 }; t.v += op.montant || 0; t.n++; });
+    special = `<div class="grid2">
+      <div class="card"><h3>Origine des entrées</h3>${rptHBars(Object.entries(origine).sort((a, b) => b[1] - a[1]).map(([label, v]) => ({ label, v })), ACC)}</div>
+      <div class="card"><h3>Dons par type de soirée</h3>${rptHBars(Object.entries(parType).sort((a, b) => b[1].v - a[1].v).slice(0, 7).map(([label, t]) => ({ label, v: t.v, sub: t.n + ' soirée' + (t.n > 1 ? 's' : '') })), ACC)}</div>
+    </div>`;
+  } else {
+    const top = [...ops].sort((a, b) => (b.montant || 0) - (a.montant || 0)).slice(0, 5);
+    special = `<div class="card"><h3>Les 5 plus grosses dépenses</h3>
+      <table class="tbl"><thead><tr><th style="width:90px">Date</th><th>Achat</th><th>Catégorie</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead><tbody>
+      ${top.map(op => `<tr><td>${opDate(op).toLocaleDateString('fr-FR')}</td><td>${escHTML(rptLibelle(op))}</td><td>${escHTML(op.categorie || '')}</td><td class="amt">${fmt(op.montant || 0)}</td><td class="pct">${rptPct(op.montant || 0, total)}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+
+  // Détail par compte (option)
+  let detailHTML = '';
+  if (document.getElementById('recap-detail-comptes')?.checked) {
+    const groups = {};
+    const push = (code, e) => { (groups[code] = groups[code] || []).push(e); };
+    ops.forEach(op => {
+      const d = opDate(op).toLocaleDateString('fr-FR');
+      if (op.helloasso) { pcgBreakdown(op).forEach(x => push(x.code, { d, lib: rptLibelle(op), arts: [{ a: x.code === '756' ? 'Adhésions' : x.code === '7541' ? 'Dons' : 'Autre', m: x.montant }], m: x.montant })); return; }
+      if (op.lignes && op.lignes.length) {
+        const base = PCG_CAT[op.categorie] || (isE ? '758' : '628');
+        const acc = {}; let reste = op.montant || 0;
+        op.lignes.forEach(l => { const c = PCG_CAT[l.categorie] || base; (acc[c] = acc[c] || []).push({ a: l.article || 'Article', m: l.montant || 0 }); reste -= (l.montant || 0); });
+        if (Math.abs(reste) > 0.005) (acc[base] = acc[base] || []).push({ a: 'Reste du ticket (non détaillé)', m: reste });
+        Object.entries(acc).forEach(([c, arts]) => push(c, { d, lib: rptLibelle(op), arts, m: arts.reduce((s, x) => s + x.m, 0) }));
+        return;
+      }
+      pcgBreakdown(op).forEach(x => push(x.code, { d, lib: rptLibelle(op), arts: [], m: x.montant }));
+    });
+    const order = comp.list.map(c => c.code).filter(c => groups[c]).concat(Object.keys(groups).filter(c => !comp.list.find(x => x.code === c)));
+    detailHTML = `<section class="pb"><h2><span class="num">04</span>Détail par compte</h2>` + order.map(c => {
+      const list = groups[c]; const tot = list.reduce((s, e) => s + e.m, 0);
+      return `<div class="compte"><div class="compte-head" style="border-left-color:${comp.colorOf[c] || RPT.OTHER}"><span class="code">${c}</span><span>${rptPlain(c)}</span><span class="amt">${fmt(tot)}</span></div>
+        <table class="tbl fixed"><thead><tr><th style="width:84px">Date</th><th style="width:34%">Achat</th><th>Articles</th><th class="amt" style="width:90px">Montant</th></tr></thead><tbody>
+        ${list.map(e => `<tr><td>${e.d}</td><td>${escHTML(e.lib)}</td><td>${e.arts.length ? e.arts.map(x => `${escHTML(x.a)} <span class="muted">(${fmt(x.m)})</span>`).join('<br>') : '<span class="muted">—</span>'}</td><td class="amt">${fmt(e.m)}</td></tr>`).join('')}
+        </tbody></table></div>`;
+    }).join('') + `</section>`;
+  }
+
+  const titre = isE ? 'Rapport des entrées' : 'Rapport des sorties';
+  const lead = isE
+    ? `Sur l'exercice ${exerciceLabel(year)}, l'association a <b>reçu ${fmt(total)}</b> en ${ops.length} opérations. ${top1 ? `La première source de recettes est « ${rptPlain(top1.code)} » (${rptPct(top1.v, comp.total)}).` : ''} ${best.v > 0 ? `Le mois le plus fort a été ${best.long} (${fmt(best.v)}).` : ''}`
+    : `Sur l'exercice ${exerciceLabel(year)}, l'association a <b>dépensé ${fmt(total)}</b> en ${ops.length} opérations. ${top1 ? `Le premier poste de dépense est « ${rptPlain(top1.code)} » (${rptPct(top1.v, comp.total)}).` : ''} ${best.v > 0 ? `Le mois le plus chargé a été ${best.long} (${fmt(best.v)}).` : ''}`;
+
+  const body = `
+${rptHero("Play Thau'Gether · Comptabilité", titre, `Exercice ${exerciceLabel(year)} · ${exercicePeriode(year)} · édité le ${new Date().toLocaleDateString('fr-FR')}`, isE ? 'ENTRÉES' : 'SORTIES', ACC)}
+<div class="lead">${lead}</div>
+<div class="kpis">
+  <div class="kpi hl"><div class="kpi-l">${isE ? 'Total des entrées' : 'Total des sorties'}</div><div class="kpi-v" style="color:${ACC}">${fmt(total)}</div></div>
+  <div class="kpi"><div class="kpi-l">Opérations</div><div class="kpi-v">${ops.length}</div><div class="kpi-s">${activeMonths} mois actif${activeMonths > 1 ? 's' : ''}</div></div>
+  <div class="kpi"><div class="kpi-l">Moyenne par opération</div><div class="kpi-v">${fmt(total / ops.length)}</div></div>
+  <div class="kpi"><div class="kpi-l">Premier poste</div><div class="kpi-v">${top1 ? top1.code : '—'}</div><div class="kpi-s">${top1 ? escHTML(rptPlain(top1.code)) + ' · ' + rptPct(top1.v, comp.total) : ''}</div></div>
+</div>
+<h2><span class="num">01</span>Répartition par compte <span class="q">(Plan Comptable associatif)</span></h2>
+<div class="card split2"><div>${rptDonut(comp.slices, fmt(total), comp.list.length + ' compte' + (comp.list.length > 1 ? 's' : ''), 150)}</div>${rptLegend(comp, 'Total')}</div>
+<h2><span class="num">02</span>Évolution sur l'exercice</h2>
+<div class="card">${rptBars(months, [{ key: 'v', color: ACC, label: titre }], 118)}
+  <table class="mini"><tr>${months.map(m => `<th>${m.label}</th>`).join('')}</tr><tr>${months.map(m => `<td>${m.v ? fmt(m.v).replace(/\s?€/, '') : '—'}</td>`).join('')}</tr></table></div>
+${special}
+<section>
+<h2><span class="num">03</span>Journal des ${isE ? 'entrées' : 'sorties'}</h2>
+${rptJournal(ops, comp.colorOf, isE ? 'Total des entrées' : 'Total des sorties')}
+<p class="note">Comptes issus du Plan Comptable associatif (règlement ANC 2018-06). Les virements caisse → banque et les dépôts d'espèces sont des mouvements de trésorerie et ne figurent pas dans ce rapport.</p>
+</section>
+${detailHTML}`;
+  rptOpen(rptDoc(`PTG — ${titre} ${exerciceLabel(year)}`, rptCSS(ACC, ACC_SOFT, `Play Thau'Gether · ${titre} ${exerciceLabel(year)}`), body));
+};
+
+// ── RAPPORT FINANCIER ANNUEL (AG) ──
+window.printRapportAG = (year) => {
+  const start = new Date(year, 8, 1), end = new Date(year + 1, 7, 31, 23, 59, 59, 999);
+  const inExo = op => exerciceOf(op) === year;
+  const opsY = allOps.filter(inExo).sort((a, b) => opDate(a) - opDate(b));
+  const E = opsY.filter(o => o.type === 'entree'), S = opsY.filter(o => o.type === 'sortie');
+  if (!E.length && !S.length) { showToast('Aucune recette ni dépense sur cet exercice', 'error'); return; }
+
+  const totE = E.reduce((s, o) => s + (o.montant || 0), 0);
+  const totS = S.reduce((s, o) => s + (o.montant || 0), 0);
+  const res = totE - totS;
+  const fundsStart = allOps.filter(o => opDate(o) < start).reduce((s, o) => s + (o.type === 'entree' ? (o.montant || 0) : o.type === 'sortie' ? -(o.montant || 0) : 0), 0);
+  const fundsEnd = fundsStart + res;
+  const today = new Date();
+  const enCours = today < end;
+  const asOf = enCours ? today : end;
+
+  const prod = rptComptes(E), chg = rptComptes(S);
+  const months = rptMonths(year);
+  months.forEach(m => { m.rec = 0; m.dep = 0; });
+  opsY.forEach(op => { const mo = rptMonthOf(months, opDate(op)); if (!mo) return; if (op.type === 'entree') mo.rec += op.montant || 0; else if (op.type === 'sortie') mo.dep += op.montant || 0; });
+  let run = fundsStart;
+  const shownMonths = months.filter(m => m.start <= asOf);
+  const points = [{ label: '1er sept', v: fundsStart }].concat(shownMonths.map(m => { run += m.rec - m.dep; return { label: m.label, v: run }; }));
+
+  // Soirées
+  const soirees = E.filter(o => o.typeSoiree || o.lieu);
+  const tenues = soirees.filter(o => !o.soireeAnnulee);
+  const annulees = soirees.length - tenues.length;
+  const avecDon = tenues.filter(o => !o.pasDeDon && (o.montant || 0) > 0);
+  const totSoirees = tenues.reduce((s, o) => s + (o.montant || 0), 0);
+  const inscrits = tenues.reduce((s, o) => s + (o.nbInscrits || 0), 0);
+  const parType = {}, parLieu = {};
+  tenues.forEach(o => {
+    if (o.typeSoiree) { const t = parType[o.typeSoiree] = parType[o.typeSoiree] || { v: 0, n: 0 }; t.v += o.montant || 0; t.n++; }
+    if (o.lieu) { const l = parLieu[o.lieu] = parLieu[o.lieu] || { v: 0, n: 0 }; l.v += o.montant || 0; l.n++; }
+  });
+  const adhesions = E.reduce((s, o) => s + (o.helloasso ? (o.haAdhesions || 0) : (o.categorie === 'Adhésion' ? (o.montant || 0) : 0)), 0);
+  const subventions = E.filter(o => o.categorie === 'Subvention').reduce((s, o) => s + (o.montant || 0), 0);
+
+  // Mouvements internes
+  const vir = opsY.filter(o => o.type === 'virement'), dep = opsY.filter(o => o.type === 'depot');
+  const totVir = vir.reduce((s, o) => s + (o.montant || 0), 0), totDep = dep.reduce((s, o) => s + (o.montant || 0), 0);
+
+  // Notes de frais remboursées (art. 14)
+  const ndfY = (typeof allNotes !== 'undefined' ? allNotes : []).filter(n => n.statut === 'remboursee' && n.dateRemboursement && ndfExoOf(n.dateRemboursement) === year);
+  const ndfG = {};
+  ndfY.forEach(n => { const k = ndfNorm(n.prenom + n.nom); const g = ndfG[k] = ndfG[k] || { nom: ndfFullName(n), qualite: ndfQualite(n), n: 0, v: 0 }; g.n++; g.v += ndfTotal(n); });
+  const ndfList = Object.values(ndfG).sort((a, b) => b.v - a.v);
+  const ndfTot = ndfList.reduce((s, g) => s + g.v, 0);
+
+  const top = [...S].sort((a, b) => (b.montant || 0) - (a.montant || 0)).slice(0, 5);
+  const resWord = res >= 0 ? 'un excédent' : 'un déficit';
+  const resClass = res >= 0 ? 'pos' : 'neg';
+  const prod1 = prod.list[0], chg1 = chg.list[0];
+
+  const crRows = (comp, color) => comp.list.map(c => `<tr><td class="code" style="width:62px"><span class="chip sm" style="background:${color}"></span>${c.code}</td><td>${PCG_COMPTES[c.code] || rptPlain(c.code)}<div class="sub">${rptPlain(c.code)}</div></td><td class="amt">${fmt(c.v)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Aucune</td></tr>';
+  const withJournal = document.getElementById('recap-journal-annexe')?.checked;
+  const bestRec = months.reduce((a, b) => b.rec > a.rec ? b : a, months[0]);
+  const bestType = Object.entries(parType).sort((a, b) => b[1].v - a[1].v)[0];
+  const highlights = [
+    tenues.length ? `<b>${tenues.length} soirée${tenues.length > 1 ? 's' : ''}</b> organisée${tenues.length > 1 ? 's' : ''}${inscrits ? `, <b>${inscrits} inscrits</b> au total` : ''}, pour <b>${fmt(totSoirees)}</b> de dons (en moyenne ${fmt(totSoirees / tenues.length)} par soirée).` : '',
+    bestType ? `Le format qui a le plus rapporté : <b>${escHTML(bestType[0])}</b>, avec ${fmt(bestType[1].v)} de dons sur ${bestType[1].n} soirée${bestType[1].n > 1 ? 's' : ''}.` : '',
+    prod1 ? `Première source de recettes : <b>${rptPlain(prod1.code)}</b> (${rptPct(prod1.v, prod.total)} des recettes).` : '',
+    chg1 ? `Premier poste de dépense : <b>${rptPlain(chg1.code)}</b> (${rptPct(chg1.v, chg.total)} des dépenses).` : '',
+    bestRec && bestRec.rec > 0 ? `Le mois le plus fort en recettes : <b>${bestRec.long}</b> (${fmt(bestRec.rec)}).` : '',
+    adhesions || subventions ? `Adhésions : <b>${fmt(adhesions)}</b>${subventions ? ` · Subventions reçues : <b>${fmt(subventions)}</b>` : ''}.` : '',
+    ndfList.length ? `Remboursements de frais aux membres : <b>${fmt(ndfTot)}</b> (${ndfY.length} note${ndfY.length > 1 ? 's' : ''}, détail en partie 08).` : '',
+    `La trésorerie passe de <b>${fmt(fundsStart)}</b> à <b>${fmt(fundsEnd)}</b> (${fundsEnd - fundsStart >= 0 ? '+' : '−'}${fmt(Math.abs(fundsEnd - fundsStart))}).`,
+  ].filter(Boolean);
+  const allColor = { ...chg.colorOf, ...prod.colorOf };
+
+  const body = `
+${rptHero("Play Thau'Gether · Assemblée générale", 'Rapport financier', `Exercice ${exerciceLabel(year)} · ${exercicePeriode(year)} · édité le ${today.toLocaleDateString('fr-FR')}`, enCours ? 'EXERCICE EN COURS' : 'EXERCICE CLOS', RPT.BLUE)}
+
+<div class="lead" style="font-size:13.5px">
+  Sur l'exercice ${exerciceLabel(year)}, Play Thau'Gether a <b>reçu ${fmt(totE)}</b> et <b>dépensé ${fmt(totS)}</b>.
+  L'association ${enCours ? 'affiche à ce jour' : 'termine l\'année avec'} <b class="${resClass}">${resWord} de ${fmt(Math.abs(res))}</b>.
+  Elle dispose de <b>${fmt(fundsEnd)}</b> ${enCours ? 'au ' + rptD(today) : 'au 31 août ' + (year + 1)}, contre ${fmt(fundsStart)} au 1er septembre ${year}.
+</div>
+
+<div class="kpis">
+  <div class="kpi" style="background:${RPT.GREEN_SOFT}"><div class="kpi-l">Recettes</div><div class="kpi-v pos">${fmt(totE)}</div><div class="kpi-s">${E.length} opérations</div></div>
+  <div class="kpi" style="background:${RPT.RED_SOFT}"><div class="kpi-l">Dépenses</div><div class="kpi-v neg">${fmt(totS)}</div><div class="kpi-s">${S.length} opérations</div></div>
+  <div class="kpi" style="background:${RPT.BLUE_SOFT}"><div class="kpi-l">Résultat</div><div class="kpi-v ${resClass}">${res >= 0 ? '+' : '−'}${fmt(Math.abs(res))}</div><div class="kpi-s">${res >= 0 ? 'Excédent' : 'Déficit'}</div></div>
+  <div class="kpi"><div class="kpi-l">Trésorerie ${enCours ? 'à ce jour' : 'au 31 août'}</div><div class="kpi-v">${fmt(fundsEnd)}</div><div class="kpi-s">caisse + banque</div></div>
+</div>
+
+<h2><span class="num">00</span>Trésorerie : d'où on part, où on arrive</h2>
+<div class="card">
+  <div class="flow">
+    <div class="box"><div class="l">Au 1er septembre ${year}</div><div class="v">${fmt(fundsStart)}</div></div>
+    <div class="arrow">→</div>
+    <div class="box" style="background:${res >= 0 ? RPT.GREEN_SOFT : RPT.RED_SOFT}"><div class="l">Résultat de l'exercice</div><div class="v ${resClass}">${res >= 0 ? '+' : '−'}${fmt(Math.abs(res))}</div></div>
+    <div class="arrow">→</div>
+    <div class="box" style="background:${RPT.BLUE_SOFT}"><div class="l">${enCours ? 'Au ' + today.toLocaleDateString('fr-FR') : 'Au 31 août ' + (year + 1)}</div><div class="v">${fmt(fundsEnd)}</div></div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="card"><h3>Comment lire ce rapport</h3>
+    <div class="gloss" style="grid-template-columns:1fr">
+      <div><b>Recettes</b> : l'argent reçu par l'association (dons des soirées, adhésions, subventions…).</div>
+      <div><b>Dépenses</b> : l'argent dépensé pour faire vivre l'association (matériel, boissons, frais bancaires…).</div>
+      <div><b>Résultat</b> = recettes − dépenses. Positif : excédent. Négatif : déficit.</div>
+      <div><b>Trésorerie</b> : l'argent disponible (caisse + compte bancaire) à une date donnée.</div>
+      <div><b>Comptes</b> (7541, 6063…) : numéros officiels du Plan Comptable associatif.</div>
+      <div><b>Virements caisse → banque</b> : ni recette ni dépense, l'argent change juste de place.</div>
+    </div>
+  </div>
+  <div class="card"><h3>Sommaire</h3>
+    <ul class="toc">
+      <li><span>01</span>D'où vient l'argent</li>
+      <li><span>02</span>Où va l'argent</li>
+      <li><span>03</span>Mois par mois</li>
+      <li><span>04</span>Trésorerie</li>
+      <li><span>05</span>Compte de résultat</li>
+      <li><span>06</span>L'activité en chiffres</li>
+      <li><span>07</span>Plus grosses dépenses</li>
+      <li><span>08</span>Remboursements</li>
+      ${withJournal ? '<li><span>A</span>Journal complet</li>' : ''}
+    </ul>
+    <p class="explain" style="margin-top:8px">Tous les montants proviennent des opérations enregistrées dans PTG Compta, justificatifs à l'appui.</p>
+  </div>
+</div>
+
+<h2><span class="num">★</span>Points marquants de l'exercice</h2>
+<div class="card"><ul class="hl-list">${highlights.map(h => `<li>${h}</li>`).join('')}</ul></div>
+
+<section class="pb">
+<h2><span class="num">01</span>D'où vient l'argent ? <span class="q">Les recettes, par compte</span></h2>
+<p class="explain">${prod1 ? `La première source de recettes est « ${rptPlain(prod1.code)} », qui représente ${rptPct(prod1.v, prod.total)} du total.` : 'Aucune recette sur cet exercice.'}</p>
+<div class="card split2"><div>${rptDonut(prod.slices, fmt(totE), 'de recettes')}</div>${rptLegend(prod, 'Total des recettes')}</div>
+
+<h2><span class="num">02</span>Où va l'argent ? <span class="q">Les dépenses, par compte</span></h2>
+<p class="explain">${chg1 ? `Le premier poste de dépense est « ${rptPlain(chg1.code)} », qui représente ${rptPct(chg1.v, chg.total)} du total.` : 'Aucune dépense sur cet exercice.'}</p>
+<div class="card split2"><div>${rptDonut(chg.slices, fmt(totS), 'de dépenses')}</div>${rptLegend(chg, 'Total des dépenses')}</div>
+</section>
+
+<section class="pb">
+<h2><span class="num">03</span>Mois par mois <span class="q">Recettes et dépenses de chaque mois</span></h2>
+<div class="card">${rptBars(months, [{ key: 'rec', color: RPT.GREEN, label: 'Recettes' }, { key: 'dep', color: RPT.RED, label: 'Dépenses' }], 205)}
+  <table class="mini">
+    <tr><th></th>${months.map(m => `<th>${m.label}</th>`).join('')}</tr>
+    <tr><td class="rl">Recettes</td>${months.map(m => `<td>${m.rec ? fmt(m.rec).replace(/\s?€/, '') : '—'}</td>`).join('')}</tr>
+    <tr><td class="rl">Dépenses</td>${months.map(m => `<td>${m.dep ? fmt(m.dep).replace(/\s?€/, '') : '—'}</td>`).join('')}</tr>
+    <tr><td class="rl">Solde</td>${months.map(m => { const d = m.rec - m.dep; return `<td class="${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}">${(m.rec || m.dep) ? (d >= 0 ? '+' : '−') + fmt(Math.abs(d)).replace(/\s?€/, '') : '—'}</td>`; }).join('')}</tr>
+  </table>
+</div>
+
+<h2><span class="num">04</span>Évolution de la trésorerie <span class="q">L'argent disponible à la fin de chaque mois</span></h2>
+<div class="card">${rptLine(points, RPT.BLUE, 200)}
+  <p class="explain" style="margin:6px 0 0">Point de départ : ${fmt(fundsStart)} au 1er septembre ${year}. Chaque point indique l'argent disponible en fin de mois (recettes − dépenses cumulées).</p>
+</div>
+</section>
+
+<section class="pb">
+<h2><span class="num">05</span>Compte de résultat <span class="q">Présentation officielle, Plan Comptable associatif</span></h2>
+<div class="cr">
+  <div><h3 style="background:${RPT.RED}">Charges (comptes 6)</h3>
+    <table class="tbl"><tbody>${crRows(chg, RPT.RED)}</tbody><tfoot><tr><td></td><td>Total des charges</td><td class="amt">${fmt(totS)}</td></tr></tfoot></table></div>
+  <div><h3 style="background:${RPT.GREEN}">Produits (comptes 7)</h3>
+    <table class="tbl"><tbody>${crRows(prod, RPT.GREEN)}</tbody><tfoot><tr><td></td><td>Total des produits</td><td class="amt">${fmt(totE)}</td></tr></tfoot></table></div>
+</div>
+<div class="result-bar" style="background:${res >= 0 ? RPT.GREEN_SOFT : RPT.RED_SOFT}">
+  <span>Résultat de l'exercice (produits − charges)</span>
+  <span class="mono ${resClass}">${res >= 0 ? 'Excédent de ' : 'Déficit de '}${fmt(Math.abs(res))}</span>
+</div>
+<div class="card" style="margin-top:10px"><h3>Mouvements internes de trésorerie <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">(hors résultat)</span></h3>
+  <table class="tbl"><tbody>
+    <tr><td>Virements de la caisse vers la banque</td><td class="pct">${vir.length} opération${vir.length > 1 ? 's' : ''}</td><td class="amt">${fmt(totVir)}</td></tr>
+    <tr><td>Dépôts d'espèces à la banque</td><td class="pct">${dep.length} opération${dep.length > 1 ? 's' : ''}</td><td class="amt">${fmt(totDep)}</td></tr>
+  </tbody></table>
+  <p class="explain" style="margin:6px 0 0">Ces montants passent d'un endroit à l'autre (caisse ↔ banque) : ils ne sont ni des recettes ni des dépenses.</p>
+</div>
+
+<h2><span class="num">06</span>L'activité en chiffres</h2>
+<div class="kpis">
+  <div class="kpi"><div class="kpi-l">Soirées tenues</div><div class="kpi-v">${tenues.length}</div><div class="kpi-s">${annulees ? annulees + ' annulée' + (annulees > 1 ? 's' : '') : 'aucune annulée'}</div></div>
+  <div class="kpi"><div class="kpi-l">Dons des soirées</div><div class="kpi-v">${fmt(totSoirees)}</div><div class="kpi-s">${avecDon.length} soirée${avecDon.length > 1 ? 's' : ''} avec dons</div></div>
+  <div class="kpi"><div class="kpi-l">Don moyen par soirée</div><div class="kpi-v">${fmt(tenues.length ? totSoirees / tenues.length : 0)}</div><div class="kpi-s">${inscrits ? inscrits + ' inscrits au total' : '&nbsp;'}</div></div>
+  <div class="kpi"><div class="kpi-l">Adhésions · Subventions</div><div class="kpi-v" style="font-size:15px">${fmt(adhesions)}</div><div class="kpi-s">subventions : ${fmt(subventions)}</div></div>
+</div>
+<div class="grid2">
+  <div class="card"><h3>Dons par type de soirée</h3>${rptHBars(Object.entries(parType).sort((a, b) => b[1].v - a[1].v).slice(0, 7).map(([label, t]) => ({ label, v: t.v, sub: t.n + ' soirée' + (t.n > 1 ? 's' : '') })), RPT.GREEN)}</div>
+  <div class="card"><h3>Dons par lieu</h3>${rptHBars(Object.entries(parLieu).sort((a, b) => b[1].v - a[1].v).slice(0, 7).map(([label, t]) => ({ label, v: t.v, sub: t.n + ' soirée' + (t.n > 1 ? 's' : '') })), RPT.BLUE)}</div>
+</div>
+</section>
+
+<section class="pb">
+<h2><span class="num">07</span>Les 5 plus grosses dépenses</h2>
+<div class="card"><table class="tbl"><thead><tr><th style="width:84px">Date</th><th>Achat</th><th>Poste</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead><tbody>
+  ${top.map(op => { const b = pcgBreakdown(op); return `<tr><td>${opDate(op).toLocaleDateString('fr-FR')}</td><td>${escHTML(rptLibelle(op))}</td><td>${b.length > 1 ? 'Plusieurs postes' : escHTML(b[0] ? rptPlain(b[0].code) : (op.categorie || ''))}</td><td class="amt">${fmt(op.montant || 0)}</td><td class="pct">${rptPct(op.montant || 0, totS)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">Aucune dépense</td></tr>'}
+</tbody></table></div>
+
+<h2><span class="num">08</span>Remboursements de frais <span class="q">par bénéficiaire (article 14 des statuts)</span></h2>
+<div class="card">
+  ${ndfList.length ? `<table class="tbl"><thead><tr><th>Bénéficiaire</th><th>Qualité</th><th class="pct">Notes</th><th class="amt">Total remboursé</th></tr></thead><tbody>
+    ${ndfList.map(g => `<tr><td>${escHTML(g.nom)}</td><td>${escHTML(g.qualite)}</td><td class="pct">${g.n}</td><td class="amt">${fmt(g.v)}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td colspan="2">Total des remboursements</td><td class="pct">${ndfY.length}</td><td class="amt">${fmt(ndfTot)}</td></tr></tfoot></table>
+  <p class="explain" style="margin:6px 0 0">Dépenses avancées par des membres pour le compte de l'association, puis remboursées sur justificatifs après validation du bureau. Ces montants sont déjà inclus dans les dépenses ci-dessus.</p>`
+    : `<p class="explain" style="margin:0">Aucune note de frais remboursée sur cet exercice.</p>`}
+</div>
+
+<h2><span class="num">✓</span>Approbation des comptes</h2>
+<div class="sign">
+  <div><b>Le trésorier</b>Nom et signature :</div>
+  <div><b>Le président</b>Nom et signature :</div>
+  <div><b>Assemblée générale</b>Comptes approuvés le ____ / ____ / ________<br>Pour : ____ · Contre : ____ · Abst. : ____</div>
+</div>
+<p class="note">Rapport établi à partir de PTG Compta. Comptes présentés selon le Plan Comptable associatif (règlement ANC 2018-06). La trésorerie correspond aux recettes moins les dépenses enregistrées depuis l'ouverture des comptes.</p>
+</section>
+
+${withJournal ? `<section class="pb"><h2><span class="num">A</span>Annexe : journal complet des recettes et dépenses</h2>${rptJournal(opsY.filter(o => o.type === 'entree' || o.type === 'sortie'), allColor, 'Résultat')}</section>` : ''}`;
+
+  rptOpen(rptDoc(`PTG — Rapport financier ${exerciceLabel(year)}`, rptCSS(RPT.BLUE, RPT.BLUE_SOFT, `Play Thau'Gether · Rapport financier ${exerciceLabel(year)}`), body));
 };
 
 window.downloadRecap = (year) => {
@@ -4313,7 +4612,6 @@ window.ndfSave = async () => {
     const uploaded = ndfNewFiles.length ? await ndfUploadFiles(ndfNewFiles, btn) : [];
     data.justificatifs = [...ndfExisting, ...uploaded];
     data.total = Math.round(data.lignes.reduce((s, l) => s + l.montant, 0) * 100) / 100;
-    if (data.nbJustifs === null && data.justificatifs.length) data.nbJustifs = data.justificatifs.length;
 
     if (ndfEditingId) {
       const cur = allNotes.find(x => x.id === ndfEditingId);

@@ -871,6 +871,40 @@
     .main { padding: 16px 12px; }
     .add-member-form { flex-direction: column; }
   }
+  /* NOTES DE FRAIS */
+  .ndf-modal { max-width: 860px; }
+  .ndf-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); font-weight: 700; margin: 18px 0 10px; }
+  .ndf-muted { color: var(--text3); font-size: 12px; }
+  .ndf-hint { font-size: 12px; color: var(--text3); line-height: 1.5; margin: 0 0 8px; }
+  .ndf-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .ndf-chip { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .ndf-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ndf-item { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer; transition: border-color .2s; }
+  .ndf-item:hover { border-color: var(--accent); }
+  .ndf-item-main { min-width: 0; }
+  .ndf-item-name { font-weight: 600; font-size: 15px; }
+  .ndf-item-amt { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--red); white-space: nowrap; }
+  .ndf-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; margin-right: 5px; border: 1px solid; }
+  .ndf-badge.attente { color: var(--orange); border-color: var(--orange); }
+  .ndf-badge.validee { color: var(--blue); border-color: var(--blue); }
+  .ndf-badge.remboursee { color: var(--green); border-color: var(--green); }
+  .ndf-badge.compta { color: var(--text2); border-color: var(--border); }
+  .ndf-badge.regul { color: var(--purple); border-color: var(--purple); }
+  .ndf-status-bar { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 4px; }
+  .ndf-line { display: grid; grid-template-columns: 24px 1fr 28px; gap: 8px; align-items: start; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; margin-bottom: 8px; }
+  .ndf-line-num { font-family: 'JetBrains Mono', monospace; color: var(--text3); font-size: 12px; padding-top: 10px; text-align: center; }
+  .ndf-line-grid { display: grid; grid-template-columns: 140px 1fr 1fr 1fr; gap: 6px; }
+  .ndf-line-grid .span2 { grid-column: span 2; }
+  .ndf-line-grid input, .ndf-line-grid select { padding: 8px 10px; font-size: 13px; background: var(--bg2); }
+  .ndf-line-grid input:disabled, .ndf-line-grid select:disabled { opacity: .75; }
+  .ndf-recap-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ndf-recap-tbl th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  .ndf-recap-tbl td { padding: 10px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .ndf-recap-total td { font-weight: 700; border-bottom: none; }
+  @media (max-width: 640px) {
+    .ndf-line-grid { grid-template-columns: 1fr 1fr; }
+    .ndf-line-grid .span2 { grid-column: span 2; }
+  }
 </style>
 </head>
 <body>
@@ -918,6 +952,7 @@
     <button class="nav-btn" onclick="showPage('historique')" data-page="historique">📋 Historique</button>
     <button class="nav-btn" onclick="showPage('stats')" data-page="stats">📊 Stats</button>
     <button class="nav-btn" onclick="showPage('recap')" data-page="recap">📄 Récap</button>
+    <button class="nav-btn" onclick="showPage('ndf')" data-page="ndf">🧾 Notes de frais</button>
     <button class="nav-btn" id="admin-nav-btn" onclick="showPage('admin')" data-page="admin" style="display:none">⚙️ Admin</button>
   </nav>
 
@@ -1054,6 +1089,38 @@
     </div>
 
     <!-- ADMIN -->
+    <!-- NOTES DE FRAIS -->
+    <div class="page" id="page-ndf">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <div class="card-title" style="margin:0">🧾 Notes de frais</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-primary" onclick="ndfOpen(null)">+ Nouvelle note</button>
+            <button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="ndfPrint(null)">🖨️ Fiche vierge</button>
+            <button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="ndfOpen(null, true)">+ Régularisation (déjà remboursée en espèces)</button>
+          </div>
+        </div>
+        <div class="ndf-filters" id="ndf-filters">
+          <button class="ndf-chip active" data-f="all" onclick="ndfFilter('all')">Toutes</button>
+          <button class="ndf-chip" data-f="attente" onclick="ndfFilter('attente')">En attente</button>
+          <button class="ndf-chip" data-f="validee" onclick="ndfFilter('validee')">Validées</button>
+          <button class="ndf-chip" data-f="remboursee" onclick="ndfFilter('remboursee')">Remboursées</button>
+        </div>
+        <div id="ndf-list"><div class="empty-state"><div class="empty-icon">🧾</div><p>Aucune note de frais</p></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Récap pour l'AG — remboursements par bénéficiaire</div>
+        <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Notes remboursées sur l'exercice (1er septembre → 31 août), à joindre au rapport financier (article 14 des statuts).</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+          <select id="ndf-recap-exo" onchange="ndfRenderRecap()" style="width:auto"></select>
+          <button class="btn-primary" onclick="ndfRecapCSV()">⬇️ CSV</button>
+          <button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)" onclick="ndfRecapPrint()">🖨️ PDF</button>
+        </div>
+        <div id="ndf-recap"></div>
+      </div>
+    </div>
+
     <div class="page" id="page-admin">
 
       <div class="card">
@@ -1435,6 +1502,129 @@
   </div>
 </div>
 
+<!-- MODAL NOTE DE FRAIS -->
+<div class="modal-overlay" id="modal-ndf">
+  <div class="modal ndf-modal">
+    <div class="modal-header">
+      <div class="modal-title" id="ndf-title">Note de frais</div>
+      <button class="modal-close" onclick="closeModal('modal-ndf')">✕</button>
+    </div>
+
+    <div id="ndf-status-bar" class="ndf-status-bar"></div>
+
+    <div class="ndf-section-title">Bénéficiaire</div>
+    <div class="form-row">
+      <div class="form-group"><label>Nom</label><input type="text" id="ndf-nom" placeholder="Nom"/></div>
+      <div class="form-group"><label>Prénom</label><input type="text" id="ndf-prenom" placeholder="Prénom"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Qualité</label>
+        <select id="ndf-qualite" onchange="document.getElementById('ndf-qualite-autre-g').style.display = this.value === 'autre' ? 'block' : 'none'">
+          <option value="bureau">Membre du bureau</option>
+          <option value="benevole">Bénévole</option>
+          <option value="adherent">Adhérent</option>
+          <option value="autre">Autre</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Date de la note</label><input type="date" id="ndf-date"/></div>
+    </div>
+    <div class="form-group" id="ndf-qualite-autre-g" style="display:none"><label>Précisez la qualité</label><input type="text" id="ndf-qualite-autre" placeholder="ex : intervenant extérieur"/></div>
+
+    <div class="ndf-section-title">Dépenses <span id="ndf-lines-count" class="ndf-muted"></span></div>
+    <div id="ndf-lines"></div>
+    <div class="ligne-actions" style="margin-bottom:16px">
+      <button type="button" class="ligne-btn" id="ndf-add-line" onclick="ndfAddLine()">+ Ajouter une dépense</button>
+      <span id="ndf-total" style="font-size:14px;color:var(--text2)"></span>
+    </div>
+    <p class="ndf-hint">Une ligne peut regrouper plusieurs articles d'un même ticket (ex : « Achats divers Halloween, détail sur le ticket »). 7 lignes maximum par note. La catégorie sert au classement dans Compta (plan comptable).</p>
+
+    <div class="ndf-section-title">Justificatifs</div>
+    <div id="ndf-existing-files"></div>
+    <div class="upload-zone" id="ndf-upload-zone" onclick="document.getElementById('ndf-file-input').click()">
+      <input type="file" id="ndf-file-input" accept="image/*,.pdf" multiple onchange="ndfHandleFiles(event)" style="display:none"/>
+      <div class="upload-icon">📎</div>
+      <p>Ajouter des photos ou PDF<br><span style="font-size:11px">Les PDF sont convertis en images · Max 10 Mo chacun</span></p>
+    </div>
+    <div class="files-list" id="ndf-files-list"></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px">
+      <div class="form-group"><label>Nombre total</label><input type="number" min="0" id="ndf-nb-total" oninput="ndfCheckJustifs()"/></div>
+      <div class="form-group"><label>dont papier</label><input type="number" min="0" id="ndf-nb-papier" oninput="ndfCheckJustifs()"/></div>
+      <div class="form-group"><label>dont numérique</label><input type="number" min="0" id="ndf-nb-num" oninput="ndfCheckJustifs()"/></div>
+    </div>
+    <div id="ndf-justifs-warn" class="ndf-hint" style="color:var(--orange);display:none"></div>
+
+    <div id="ndf-regul-box" style="display:none">
+      <div class="ndf-section-title">Régularisation — remboursement déjà effectué</div>
+      <div class="form-row">
+        <div class="form-group"><label>Date du remboursement (espèces)</label><input type="date" id="ndf-regul-date"/></div>
+        <div class="form-group"><label>Catégorie dans Compta</label><select id="ndf-regul-cat"></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Validé par (optionnel)</label><input type="text" id="ndf-regul-valid-nom" placeholder="Prénom Nom"/></div>
+        <div class="form-group"><label>Fonction</label><select id="ndf-regul-valid-fonction"></select></div>
+      </div>
+      <div class="checkbox-group" style="margin-bottom:12px" onclick="const c=document.getElementById('ndf-regul-exists');if(event.target!==c)c.checked=!c.checked">
+        <input type="checkbox" id="ndf-regul-exists"/>
+        <label for="ndf-regul-exists" onclick="event.preventDefault()">La sortie est déjà enregistrée dans Compta (ne pas la recréer)</label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Notes (optionnel)</label>
+      <textarea id="ndf-notes" placeholder="Infos complémentaires..."></textarea>
+    </div>
+
+    <button class="btn-submit sortie" id="ndf-save-btn" onclick="ndfSave()">💾 Enregistrer la note</button>
+    <div id="ndf-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div>
+</div>
+
+<!-- MODAL VALIDATION NDF -->
+<div class="modal-overlay" id="modal-ndf-valid">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">✅ Valider la note de frais</div>
+      <button class="modal-close" onclick="closeModal('modal-ndf-valid')">✕</button>
+    </div>
+    <p class="ndf-hint" style="margin-bottom:16px">La validation doit être faite par un autre membre du bureau que le bénéficiaire (« Bon pour remboursement »).</p>
+    <div class="form-group"><label>Nom du validateur</label><input type="text" id="ndf-v-nom" placeholder="Prénom Nom"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Fonction</label><select id="ndf-v-fonction"></select></div>
+      <div class="form-group"><label>Date de validation</label><input type="date" id="ndf-v-date"/></div>
+    </div>
+    <button class="btn-submit entree" onclick="ndfConfirmValidate()">✅ Valider (bon pour remboursement)</button>
+  </div>
+</div>
+
+<!-- MODAL REMBOURSEMENT NDF -->
+<div class="modal-overlay" id="modal-ndf-remb">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">💸 Marquer comme remboursée</div>
+      <button class="modal-close" onclick="closeModal('modal-ndf-remb')">✕</button>
+    </div>
+    <div id="ndf-r-summary" class="ndf-hint" style="margin-bottom:16px"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Date du virement</label><input type="date" id="ndf-r-date"/></div>
+      <div class="form-group">
+        <label>Mode</label>
+        <select id="ndf-r-mode">
+          <option value="virement">🏦 Virement bancaire</option>
+          <option value="especes">💵 Espèces (caisse)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Catégorie de la sortie dans Compta</label><select id="ndf-r-cat"></select></div>
+    <div class="checkbox-group" style="margin-bottom:16px" onclick="const c=document.getElementById('ndf-r-exists');if(event.target!==c)c.checked=!c.checked">
+      <input type="checkbox" id="ndf-r-exists"/>
+      <label for="ndf-r-exists" onclick="event.preventDefault()">La sortie est déjà enregistrée dans Compta (ne pas la recréer)</label>
+    </div>
+    <p class="ndf-hint" style="margin-bottom:16px">La sortie est créée automatiquement dans Compta avec le montant total, les justificatifs et le détail des lignes. La note est ensuite verrouillée.</p>
+    <button class="btn-submit sortie" id="ndf-r-btn" onclick="ndfConfirmRembourse()">💸 Confirmer le remboursement</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 
@@ -1519,6 +1709,7 @@ window.signInWithGoogle = async () => {
 
 window.signOut = async () => {
   if (unsubOps) unsubOps();
+  if (unsubNotes) unsubNotes();
   await fbSignOut(auth);
 };
 
@@ -1575,6 +1766,9 @@ function initApp() {
 
   // Charger la config (soirées & lieux) pour tout le monde
   loadConfig();
+
+  // Notes de frais (temps réel)
+  ndfSubscribe();
 
   if (currentUserData?.role === 'admin') {
     loadMembers();
@@ -2912,6 +3106,7 @@ window.showDetail = (id) => {
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''}
     <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${ORG_NAME}</span></div>
+    ${op.noteFraisId ? `<div class="detail-row"><span class="detail-key">Note de frais</span><span class="detail-val"><a href="#" style="color:var(--accent)" onclick="event.preventDefault();closeModal('modal-detail');showPage('ndf');ndfOpen('${op.noteFraisId}')">Voir la note</a></span></div>` : ''}
     ${renderTicketHTML(op)}
     ${op.notes ? `<div class="detail-block"><div class="detail-key">Notes</div><div class="detail-notes">${formatNotes(op.notes)}</div></div>` : ''}
     ${(op.driveFiles && op.driveFiles.length > 0)
@@ -3792,6 +3987,7 @@ window.showPage = (page) => {
   document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
 
   if (page === 'recap') renderRecapPage();
+  if (page === 'ndf') ndfRenderAll();
   if (page === 'admin' && currentUserData?.role === 'admin') {
     loadMembers();
     loadAudit();
@@ -3805,6 +4001,726 @@ window.showPage = (page) => {
     document.getElementById('admin-profile-name').textContent = currentUserData.displayName || '— Nom non défini —';
     document.getElementById('profile-name-input').placeholder = currentUserData.displayName || 'Votre prénom et nom...';
   }
+};
+
+// ══════════════════════════════════════════════════════════════
+// ── NOTES DE FRAIS ──
+// Collection Firestore : notesFrais
+// ══════════════════════════════════════════════════════════════
+const NDF_QUALITES = { bureau: 'Membre du bureau', benevole: 'Bénévole', adherent: 'Adhérent', autre: 'Autre' };
+const NDF_FONCTIONS = ['Président', 'Trésorier', 'Secrétaire', 'Autre membre du bureau'];
+const NDF_STATUTS = { attente: 'En attente', validee: 'Validée', remboursee: 'Remboursée' };
+const NDF_MAX_LINES = 7;
+
+let allNotes = [];
+let unsubNotes = null;
+let ndfFilterVal = 'all';
+let ndfEditingId = null;
+let ndfRegul = false;
+let ndfLines = [];
+let ndfNewFiles = [];
+let ndfExisting = [];
+let ndfActionId = null;
+
+const ndfNum = v => parseFloat(String(v ?? '').replace(',', '.')) || 0;
+const ndfTotal = n => (n.lignes || []).reduce((s, l) => s + ndfNum(l.montant), 0);
+const ndfFullName = n => [n.prenom, n.nom].filter(Boolean).join(' ');
+const ndfDateFR = s => s ? s.split('-').reverse().join('/') : '';
+const ndfDateShort = s => s ? (([y, m, d]) => `${d}/${m}/${y.slice(2)}`)(s.split('-')) : '';
+const ndfToday = () => new Date().toISOString().split('T')[0];
+const ndfNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+const ndfQualite = n => n.qualite === 'autre' && n.qualiteAutre ? 'Autre (' + n.qualiteAutre + ')' : (NDF_QUALITES[n.qualite] || '');
+const ndfExoOf = s => { const d = new Date(s + 'T12:00:00'); return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1; };
+
+function ndfSubscribe() {
+  if (unsubNotes) unsubNotes();
+  unsubNotes = onSnapshot(collection(db, 'notesFrais'), (snap) => {
+    allNotes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.dateNote || '').localeCompare(a.dateNote || '') || ((b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    ndfRenderAll();
+  }, (err) => {
+    console.warn('notesFrais:', err);
+    const el = document.getElementById('ndf-list');
+    if (el) el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔒</div><p>Accès refusé à la collection « notesFrais ».<br><span style="font-size:12px">Ajoute la règle notesFrais dans les règles Firestore (voir README).</span></p></div>`;
+  });
+}
+
+function ndfRenderAll() {
+  ndfRenderList();
+  ndfRenderRecap();
+}
+
+window.ndfFilter = (f) => {
+  ndfFilterVal = f;
+  document.querySelectorAll('#ndf-filters .ndf-chip').forEach(b => b.classList.toggle('active', b.dataset.f === f));
+  ndfRenderList();
+};
+
+function ndfBadges(n) {
+  return `<span class="ndf-badge ${n.statut}">${NDF_STATUTS[n.statut] || n.statut}</span>` +
+    (n.saisiCompta ? `<span class="ndf-badge compta">Saisi dans Compta</span>` : '') +
+    (n.regularisation ? `<span class="ndf-badge regul">Régularisation</span>` : '');
+}
+
+function ndfRenderList() {
+  const el = document.getElementById('ndf-list');
+  if (!el) return;
+  const list = allNotes.filter(n => ndfFilterVal === 'all' || n.statut === ndfFilterVal);
+  if (list.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🧾</div><p>${allNotes.length ? 'Aucune note dans ce statut' : 'Aucune note de frais'}</p></div>`;
+    return;
+  }
+  el.innerHTML = list.map(n => `
+    <div class="ndf-item" onclick="ndfOpen('${n.id}')">
+      <div class="ndf-item-main">
+        <div class="ndf-item-name">${escHTML(ndfFullName(n)) || '—'} <span class="ndf-muted">· ${escHTML(ndfQualite(n))}</span></div>
+        <div class="ndf-muted">Note du ${ndfDateFR(n.dateNote)} · ${(n.lignes || []).length} dépense${(n.lignes || []).length > 1 ? 's' : ''} · ${n.nbJustifs || (n.justificatifs || []).length || 0} justificatif(s)${n.statut === 'remboursee' && n.dateRemboursement ? ' · remboursée le ' + ndfDateFR(n.dateRemboursement) : ''}</div>
+        <div style="margin-top:6px">${ndfBadges(n)}</div>
+      </div>
+      <div class="ndf-item-amt">${fmt(ndfTotal(n))}</div>
+    </div>`).join('');
+}
+
+// ── Listes déroulantes partagées ──
+function ndfCatOptions(selected) {
+  const grp = document.querySelector('#op-cat optgroup[label="Sorties"]');
+  const tmp = document.createElement('select');
+  tmp.innerHTML = '<option value="">— Choisir —</option>' + (grp ? grp.innerHTML : '');
+  Array.from(tmp.options).forEach(o => { if (o.value === (selected || '')) o.setAttribute('selected', ''); else o.removeAttribute('selected'); });
+  return tmp.innerHTML;
+}
+function ndfFonctionOptions(sel) {
+  return `<option value="">— Fonction —</option>` + NDF_FONCTIONS.map(f => `<option value="${f}" ${f === sel ? 'selected' : ''}>${f}</option>`).join('');
+}
+function ndfDefaultCat(lines) {
+  const cats = [...new Set((lines || []).map(l => l.categorie).filter(Boolean))];
+  if (cats.length === 1) return cats[0];
+  if (cats.length > 1) return 'Achats multiples';
+  return '';
+}
+
+// ── Lignes ──
+function ndfRenderLines(locked) {
+  const el = document.getElementById('ndf-lines');
+  el.innerHTML = ndfLines.map((l, i) => `
+    <div class="ndf-line">
+      <div class="ndf-line-num">${i + 1}</div>
+      <div class="ndf-line-grid">
+        <input type="date" value="${escHTML(l.date)}" oninput="ndfSetLine(${i},'date',this.value)" ${locked ? 'disabled' : ''}/>
+        <input type="text" placeholder="Magasin / site" value="${escHTML(l.magasin)}" oninput="ndfSetLine(${i},'magasin',this.value)" ${locked ? 'disabled' : ''}/>
+        <input type="text" class="span2" placeholder="Objet de la dépense" value="${escHTML(l.objet)}" oninput="ndfSetLine(${i},'objet',this.value)" ${locked ? 'disabled' : ''}/>
+        <input type="text" class="span2" placeholder="Événement / usage" value="${escHTML(l.usage)}" oninput="ndfSetLine(${i},'usage',this.value)" ${locked ? 'disabled' : ''}/>
+        <select onchange="ndfSetLine(${i},'paiement',this.value)" ${locked ? 'disabled' : ''}>
+          <option value="cb" ${l.paiement === 'cb' ? 'selected' : ''}>💳 CB perso</option>
+          <option value="especes" ${l.paiement === 'especes' ? 'selected' : ''}>💵 Espèces</option>
+        </select>
+        <input type="number" step="0.01" min="0" placeholder="Montant €" value="${escHTML(l.montant)}" oninput="ndfSetLine(${i},'montant',this.value)" ${locked ? 'disabled' : ''}/>
+        <select class="span2" onchange="ndfSetLine(${i},'categorie',this.value)" ${locked ? 'disabled' : ''}>${ndfCatOptions(l.categorie || '').replace('— Choisir —', 'Catégorie Compta (optionnel)')}</select>
+      </div>
+      ${locked ? '' : `<button type="button" class="ligne-del" onclick="ndfRemoveLine(${i})" title="Supprimer">✕</button>`}
+    </div>`).join('') || `<p class="ndf-hint">Aucune dépense pour l'instant.</p>`;
+  ndfUpdateTotal();
+  const addBtn = document.getElementById('ndf-add-line');
+  addBtn.style.display = locked ? 'none' : '';
+  addBtn.disabled = ndfLines.length >= NDF_MAX_LINES;
+  addBtn.textContent = ndfLines.length >= NDF_MAX_LINES ? '7 lignes maximum' : '+ Ajouter une dépense';
+  document.getElementById('ndf-lines-count').textContent = `(${ndfLines.length}/${NDF_MAX_LINES})`;
+}
+function ndfUpdateTotal() {
+  const t = ndfLines.reduce((s, l) => s + ndfNum(l.montant), 0);
+  document.getElementById('ndf-total').innerHTML = `Total : <b style="color:var(--text)">${fmt(t)}</b>`;
+}
+window.ndfSetLine = (i, k, v) => { if (ndfLines[i]) { ndfLines[i][k] = v; if (k === 'montant') ndfUpdateTotal(); } };
+window.ndfAddLine = () => {
+  if (ndfLines.length >= NDF_MAX_LINES) return;
+  const last = ndfLines[ndfLines.length - 1];
+  ndfLines.push({ date: last?.date || '', magasin: '', objet: '', usage: last?.usage || '', paiement: last?.paiement || 'cb', montant: '', categorie: '' });
+  ndfRenderLines(false);
+};
+window.ndfRemoveLine = (i) => { ndfLines.splice(i, 1); ndfRenderLines(false); };
+
+// ── Justificatifs ──
+window.ndfHandleFiles = async (e) => {
+  const files = Array.from(e.target.files);
+  let errors = 0;
+  for (const f of files) {
+    if (f.size > 10 * 1024 * 1024) { errors++; continue; }
+    if (f.type === 'application/pdf') {
+      showToast('Conversion PDF en cours...', 'success');
+      try {
+        const pages = await pdfToImages(f);
+        pages.forEach(p => ndfNewFiles.push(p));
+        showToast(`PDF converti : ${pages.length} page(s) ✓`, 'success');
+      } catch (err) { console.warn(err); showToast('Erreur conversion PDF', 'error'); }
+    } else {
+      ndfNewFiles.push(f);
+    }
+  }
+  if (errors) showToast(`${errors} fichier(s) trop lourd(s) ignoré(s)`, 'error');
+  document.getElementById('ndf-file-input').value = '';
+  ndfRenderFiles(false);
+};
+window.ndfRemoveNewFile = (i) => { ndfNewFiles.splice(i, 1); ndfRenderFiles(false); };
+function ndfRenderFiles(locked) {
+  document.getElementById('ndf-existing-files').innerHTML = ndfExisting.map((f, i) => `
+    <div class="upload-preview"><span>📎</span><a class="upload-preview-name" href="${f.link}" target="_blank" rel="noopener" style="color:var(--accent)">${escHTML(f.name || 'Justificatif ' + (i + 1))}</a></div>`).join('');
+  document.getElementById('ndf-files-list').innerHTML = ndfNewFiles.map((f, i) => `
+    <div class="upload-preview"><span>🖼️</span><span class="upload-preview-name">${escHTML(f.name)}</span>
+      <span style="font-size:11px;color:var(--text3)">${(f.size / 1024).toFixed(0)} Ko · à envoyer</span>
+      <button class="upload-remove" onclick="ndfRemoveNewFile(${i})">✕</button></div>`).join('');
+  document.getElementById('ndf-upload-zone').style.display = locked ? 'none' : '';
+}
+window.ndfCheckJustifs = () => {
+  const t = document.getElementById('ndf-nb-total').value, p = document.getElementById('ndf-nb-papier').value, n = document.getElementById('ndf-nb-num').value;
+  const w = document.getElementById('ndf-justifs-warn');
+  if (t !== '' && (p !== '' || n !== '') && (+p || 0) + (+n || 0) !== +t) {
+    w.style.display = 'block';
+    w.textContent = `Papier + numérique (${(+p || 0) + (+n || 0)}) ne correspond pas au total (${t}).`;
+  } else w.style.display = 'none';
+};
+
+async function ndfUploadFiles(files, btn) {
+  const out = [];
+  for (let i = 0; i < files.length; i++) {
+    if (btn) btn.innerHTML = `<span class="spinner"></span> Upload ${i + 1}/${files.length}...`;
+    try {
+      const fd = new FormData();
+      fd.append('file', files[i]);
+      fd.append('upload_preset', CLOUDINARY_PRESET);
+      fd.append('folder', 'ptg-compta/notes-frais');
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, { method: 'POST', body: fd });
+      if (res.ok) { const d = await res.json(); out.push({ fileId: d.public_id, link: d.secure_url, name: files[i].name }); }
+    } catch (e) { console.warn('Upload failed', files[i].name, e); }
+  }
+  if (out.length < files.length) showToast('⚠️ ' + (files.length - out.length) + ' upload(s) échoué(s)', 'error');
+  return out;
+}
+
+// ── Ouverture / édition ──
+window.ndfOpen = (id, regul = false) => {
+  const n = id ? allNotes.find(x => x.id === id) : null;
+  if (id && !n) return;
+  ndfEditingId = id;
+  ndfRegul = !n && regul;
+  const locked = n?.statut === 'remboursee';
+
+  document.getElementById('ndf-title').textContent = n ? 'Note de frais — ' + (ndfFullName(n) || 'sans nom') : (ndfRegul ? 'Régularisation — note déjà remboursée' : 'Nouvelle note de frais');
+  document.getElementById('ndf-nom').value = n?.nom || '';
+  document.getElementById('ndf-prenom').value = n?.prenom || '';
+  document.getElementById('ndf-qualite').value = n?.qualite || 'bureau';
+  document.getElementById('ndf-qualite-autre').value = n?.qualiteAutre || '';
+  document.getElementById('ndf-qualite-autre-g').style.display = n?.qualite === 'autre' ? 'block' : 'none';
+  document.getElementById('ndf-date').value = n?.dateNote || ndfToday();
+  document.getElementById('ndf-nb-total').value = n?.nbJustifs ?? '';
+  document.getElementById('ndf-nb-papier').value = n?.nbPapier ?? '';
+  document.getElementById('ndf-nb-num').value = n?.nbNumerique ?? '';
+  document.getElementById('ndf-justifs-warn').style.display = 'none';
+  document.getElementById('ndf-notes').value = n?.notes || '';
+
+  ndfLines = (n?.lignes || []).map(l => ({ ...l, montant: l.montant ?? '' }));
+  if (!n) ndfLines = [{ date: ndfToday(), magasin: '', objet: '', usage: '', paiement: 'cb', montant: '', categorie: '' }];
+  ndfExisting = [...(n?.justificatifs || [])];
+  ndfNewFiles = [];
+
+  // Régularisation
+  document.getElementById('ndf-regul-box').style.display = ndfRegul ? 'block' : 'none';
+  document.getElementById('ndf-regul-date').value = ndfToday();
+  document.getElementById('ndf-regul-cat').innerHTML = ndfCatOptions('');
+  document.getElementById('ndf-regul-valid-nom').value = '';
+  document.getElementById('ndf-regul-valid-fonction').innerHTML = ndfFonctionOptions('');
+  document.getElementById('ndf-regul-exists').checked = false;
+
+  // Barre de statut
+  const bar = document.getElementById('ndf-status-bar');
+  if (n) {
+    const info = [];
+    if (n.validateurNom) info.push(`Validée par ${escHTML(n.validateurNom)}${n.validateurFonction ? ' (' + escHTML(n.validateurFonction) + ')' : ''}${n.dateValidation ? ' le ' + ndfDateFR(n.dateValidation) : ''}`);
+    if (n.statut === 'remboursee') info.push(`Remboursée ${n.modeRemboursement === 'especes' ? 'en espèces' : 'par virement'} le ${ndfDateFR(n.dateRemboursement)}`);
+    if (locked) info.push('🔒 Note verrouillée');
+    bar.innerHTML = `<div>${ndfBadges(n)}</div>${info.length ? `<div class="ndf-muted" style="margin-top:6px">${info.join(' · ')}</div>` : ''}`;
+    bar.style.display = 'block';
+  } else bar.style.display = 'none';
+
+  ndfRenderLines(locked);
+  ndfRenderFiles(locked);
+
+  // Verrouillage
+  ['ndf-nom', 'ndf-prenom', 'ndf-qualite', 'ndf-qualite-autre', 'ndf-date', 'ndf-nb-total', 'ndf-nb-papier', 'ndf-nb-num', 'ndf-notes']
+    .forEach(fid => { document.getElementById(fid).disabled = locked; });
+  document.getElementById('ndf-save-btn').style.display = locked ? 'none' : '';
+  document.getElementById('ndf-save-btn').textContent = ndfRegul ? '💾 Enregistrer la régularisation' : (n ? '💾 Enregistrer les modifications' : '💾 Enregistrer la note');
+
+  // Actions
+  const acts = [];
+  if (n) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)" onclick="ndfPrint('${n.id}')">🖨️ Imprimer</button>`);
+  if (n?.statut === 'attente') acts.push(`<button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="ndfValidate('${n.id}')">✅ Valider</button>`);
+  if (n?.statut === 'validee') acts.push(`<button class="btn-primary" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red)" onclick="ndfRembourse('${n.id}')">💸 Marquer remboursée</button>`);
+  if (n?.operationId) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="closeModal('modal-ndf');showDetail('${n.operationId}')">📋 Voir la sortie dans Compta</button>`);
+  if (n && currentUserData?.role === 'admin') acts.push(`<button class="btn-danger" onclick="ndfDelete('${n.id}')">🗑️ Supprimer</button>`);
+  document.getElementById('ndf-actions').innerHTML = acts.join('');
+
+  document.getElementById('modal-ndf').classList.add('open');
+};
+
+function ndfReadForm() {
+  const lignes = ndfLines
+    .map(l => ({ date: l.date || '', magasin: String(l.magasin || '').trim(), objet: String(l.objet || '').trim(), usage: String(l.usage || '').trim(), paiement: l.paiement === 'especes' ? 'especes' : 'cb', montant: Math.round(ndfNum(l.montant) * 100) / 100, categorie: l.categorie || null }))
+    .filter(l => l.objet || l.magasin || l.montant);
+  const int = id => { const v = document.getElementById(id).value; return v === '' ? null : parseInt(v, 10); };
+  return {
+    nom: document.getElementById('ndf-nom').value.trim(),
+    prenom: document.getElementById('ndf-prenom').value.trim(),
+    qualite: document.getElementById('ndf-qualite').value,
+    qualiteAutre: document.getElementById('ndf-qualite').value === 'autre' ? (document.getElementById('ndf-qualite-autre').value.trim() || null) : null,
+    dateNote: document.getElementById('ndf-date').value,
+    lignes,
+    nbJustifs: int('ndf-nb-total'),
+    nbPapier: int('ndf-nb-papier'),
+    nbNumerique: int('ndf-nb-num'),
+    notes: document.getElementById('ndf-notes').value.trim() || null,
+  };
+}
+
+window.ndfSave = async () => {
+  const data = ndfReadForm();
+  if (!data.nom || !data.prenom) { showToast('Nom et prénom du bénéficiaire obligatoires', 'error'); return; }
+  if (!data.dateNote) { showToast('Date de la note obligatoire', 'error'); return; }
+  if (data.lignes.length === 0) { showToast('Ajoute au moins une dépense', 'error'); return; }
+  if (data.lignes.length > NDF_MAX_LINES) { showToast('7 lignes maximum par note', 'error'); return; }
+  if (data.lignes.some(l => !l.montant || l.montant <= 0)) { showToast('Chaque dépense doit avoir un montant', 'error'); return; }
+  if (data.lignes.some(l => !l.objet)) { showToast("Chaque dépense doit avoir un objet", 'error'); return; }
+
+  const regulExists = document.getElementById('ndf-regul-exists').checked;
+  const regulDate = document.getElementById('ndf-regul-date').value;
+  const regulCat = document.getElementById('ndf-regul-cat').value;
+  if (ndfRegul) {
+    if (!regulDate) { showToast('Date du remboursement obligatoire', 'error'); return; }
+    if (!regulExists && !regulCat) { showToast('Choisis la catégorie de la sortie dans Compta', 'error'); return; }
+    const vNom = document.getElementById('ndf-regul-valid-nom').value.trim();
+    if (vNom && [ndfNorm(data.prenom + data.nom), ndfNorm(data.nom + data.prenom)].includes(ndfNorm(vNom))) {
+      showToast('Le validateur doit être un autre membre du bureau que le bénéficiaire', 'error'); return;
+    }
+  }
+
+  const btn = document.getElementById('ndf-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enregistrement...';
+  try {
+    const uploaded = ndfNewFiles.length ? await ndfUploadFiles(ndfNewFiles, btn) : [];
+    data.justificatifs = [...ndfExisting, ...uploaded];
+    data.total = Math.round(data.lignes.reduce((s, l) => s + l.montant, 0) * 100) / 100;
+    if (data.nbJustifs === null && data.justificatifs.length) data.nbJustifs = data.justificatifs.length;
+
+    if (ndfEditingId) {
+      const cur = allNotes.find(x => x.id === ndfEditingId);
+      if (cur?.statut === 'remboursee') { showToast('Note remboursée : verrouillée', 'error'); return; }
+      await updateDoc(doc(db, 'notesFrais', ndfEditingId), { ...data, updatedAt: serverTimestamp() });
+      await logAudit('ndf_edit', `Note de frais modifiée — ${data.prenom} ${data.nom} — ${data.total}€`);
+      showToast('✓ Note modifiée', 'success');
+    } else if (ndfRegul) {
+      const vNom = document.getElementById('ndf-regul-valid-nom').value.trim();
+      const vFct = document.getElementById('ndf-regul-valid-fonction').value;
+      const note = {
+        ...data, statut: 'remboursee', regularisation: true,
+        validateurNom: vNom || null, validateurFonction: vNom ? (vFct || null) : null, dateValidation: null,
+        dateRemboursement: regulDate, modeRemboursement: 'especes',
+        categorieCompta: regulExists ? null : regulCat, saisiCompta: true, operationId: null,
+        createdBy: currentUser.email, createdAt: serverTimestamp(),
+      };
+      const ref = await addDoc(collection(db, 'notesFrais'), note);
+      if (!regulExists) {
+        const opId = await ndfCreateOperation({ ...note, id: ref.id }, regulDate, 'especes', regulCat);
+        await updateDoc(ref, { operationId: opId });
+      }
+      await logAudit('ndf_regul', `Régularisation note de frais — ${data.prenom} ${data.nom} — ${data.total}€ remboursés en espèces le ${ndfDateFR(regulDate)}`);
+      showToast(regulExists ? '✓ Régularisation enregistrée' : '✓ Régularisation enregistrée + sortie créée dans Compta', 'success');
+    } else {
+      await addDoc(collection(db, 'notesFrais'), {
+        ...data, statut: 'attente', regularisation: false, saisiCompta: false, operationId: null,
+        createdBy: currentUser.email, createdAt: serverTimestamp(),
+      });
+      await logAudit('ndf_add', `Note de frais créée — ${data.prenom} ${data.nom} — ${data.total}€`);
+      showToast('✓ Note de frais enregistrée', 'success');
+    }
+    closeModal('modal-ndf');
+  } catch (e) {
+    console.error(e);
+    showToast('Erreur : ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = ndfRegul ? '💾 Enregistrer la régularisation' : '💾 Enregistrer la note';
+  }
+};
+
+// ── Création de la sortie dans Compta ──
+async function ndfCreateOperation(n, dateRemb, mode, categorie) {
+  const files = n.justificatifs || [];
+  const total = ndfTotal(n);
+  const nom = ndfFullName(n);
+  const lignes = (n.lignes || []).map(l => ({
+    article: l.objet + (l.magasin ? ' (' + l.magasin + ')' : '') + (l.date ? ' du ' + ndfDateFR(l.date) : ''),
+    montant: ndfNum(l.montant),
+    categorie: l.categorie || null,
+    usage: l.usage || null,
+  }));
+  const valid = n.validateurNom ? ` Validée par ${n.validateurNom}${n.validateurFonction ? ' (' + n.validateurFonction + ')' : ''}${n.dateValidation ? ' le ' + ndfDateFR(n.dateValidation) : ''}.` : '';
+  const opData = {
+    type: 'sortie',
+    montant: Math.round(total * 100) / 100,
+    description: `Note de frais — ${nom}`,
+    date: new Date(dateRemb + 'T12:00:00'),
+    dateMois: false,
+    categorie: categorie || null,
+    autrePrecision: null, soiree: null, typeSoiree: null, lieu: null, nbInscrits: null,
+    soireeAnnulee: false, pasDeDon: false, donMode: null, donOrigine: null, virementPar: null,
+    notes: `Remboursement de la note de frais de ${nom} (${ndfQualite(n)}) du ${ndfDateFR(n.dateNote)}, ${mode === 'especes' ? 'en espèces' : 'par virement'} le ${ndfDateFR(dateRemb)}.${valid}`,
+    lignes: lignes.length ? lignes : null,
+    noteFraisId: n.id,
+    auteur: currentUser.email,
+    auteurNom: ORG_NAME,
+    createdAt: serverTimestamp(),
+    driveFiles: files.length ? files : null,
+    driveFileId: files[0]?.fileId || null,
+    driveLink: files[0]?.link || null,
+    driveFileName: files[0]?.name || null,
+  };
+  const ref = await addDoc(collection(db, 'operations'), opData);
+  await logAudit('add_operation', `[Note de frais] sortie ${opData.montant}€ — ${opData.description}`);
+  return ref.id;
+}
+
+// ── Validation ──
+window.ndfValidate = (id) => {
+  ndfActionId = id;
+  document.getElementById('ndf-v-nom').value = '';
+  document.getElementById('ndf-v-fonction').innerHTML = ndfFonctionOptions('');
+  document.getElementById('ndf-v-date').value = ndfToday();
+  document.getElementById('modal-ndf-valid').classList.add('open');
+};
+window.ndfConfirmValidate = async () => {
+  const n = allNotes.find(x => x.id === ndfActionId);
+  if (!n) return;
+  const vNom = document.getElementById('ndf-v-nom').value.trim();
+  const vFct = document.getElementById('ndf-v-fonction').value;
+  const vDate = document.getElementById('ndf-v-date').value;
+  if (!vNom || !vFct || !vDate) { showToast('Nom, fonction et date du validateur obligatoires', 'error'); return; }
+  if ([ndfNorm(n.prenom + n.nom), ndfNorm(n.nom + n.prenom)].includes(ndfNorm(vNom))) {
+    showToast('Le validateur doit être un autre membre du bureau que le bénéficiaire', 'error'); return;
+  }
+  try {
+    await updateDoc(doc(db, 'notesFrais', n.id), { statut: 'validee', validateurNom: vNom, validateurFonction: vFct, dateValidation: vDate, updatedAt: serverTimestamp() });
+    await logAudit('ndf_valid', `Note de frais validée — ${ndfFullName(n)} — ${ndfTotal(n)}€ — par ${vNom} (${vFct})`);
+    closeModal('modal-ndf-valid');
+    closeModal('modal-ndf');
+    showToast('✓ Note validée — bon pour remboursement', 'success');
+  } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
+};
+
+// ── Remboursement ──
+window.ndfRembourse = (id) => {
+  const n = allNotes.find(x => x.id === id);
+  if (!n) return;
+  ndfActionId = id;
+  document.getElementById('ndf-r-summary').innerHTML = `<b style="color:var(--text)">${escHTML(ndfFullName(n))}</b> · ${fmt(ndfTotal(n))} · ${(n.lignes || []).length} dépense(s) · ${(n.justificatifs || []).length} justificatif(s) rattaché(s)`;
+  document.getElementById('ndf-r-date').value = ndfToday();
+  document.getElementById('ndf-r-mode').value = 'virement';
+  document.getElementById('ndf-r-cat').innerHTML = ndfCatOptions(ndfDefaultCat(n.lignes));
+  document.getElementById('ndf-r-exists').checked = false;
+  document.getElementById('modal-ndf-remb').classList.add('open');
+};
+window.ndfConfirmRembourse = async () => {
+  const n = allNotes.find(x => x.id === ndfActionId);
+  if (!n) return;
+  if (n.statut !== 'validee') { showToast('La note doit être validée avant le remboursement', 'error'); return; }
+  const date = document.getElementById('ndf-r-date').value;
+  const mode = document.getElementById('ndf-r-mode').value;
+  const cat = document.getElementById('ndf-r-cat').value;
+  const exists = document.getElementById('ndf-r-exists').checked;
+  if (!date) { showToast('Date du virement obligatoire', 'error'); return; }
+  if (!exists && !cat) { showToast('Choisis la catégorie de la sortie', 'error'); return; }
+  const btn = document.getElementById('ndf-r-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enregistrement...';
+  try {
+    const opId = exists ? null : await ndfCreateOperation(n, date, mode, cat);
+    await updateDoc(doc(db, 'notesFrais', n.id), {
+      statut: 'remboursee', dateRemboursement: date, modeRemboursement: mode,
+      categorieCompta: exists ? null : cat, operationId: opId, saisiCompta: true, updatedAt: serverTimestamp(),
+    });
+    await logAudit('ndf_remb', `Note de frais remboursée — ${ndfFullName(n)} — ${ndfTotal(n)}€ ${mode === 'especes' ? 'en espèces' : 'par virement'} le ${ndfDateFR(date)}`);
+    closeModal('modal-ndf-remb');
+    closeModal('modal-ndf');
+    showToast(exists ? '✓ Note remboursée' : '✓ Note remboursée + sortie créée dans Compta', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('Erreur : ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💸 Confirmer le remboursement';
+  }
+};
+
+// ── Suppression (admin) ──
+window.ndfDelete = async (id) => {
+  const n = allNotes.find(x => x.id === id);
+  if (!n) return;
+  const msg = `Supprimer la note de frais de ${ndfFullName(n)} (${fmt(ndfTotal(n))}) ?` +
+    (n.operationId ? `\n\nLa sortie créée dans Compta n'est PAS supprimée : supprime-la à part si besoin.` : '');
+  if (!confirm(msg)) return;
+  try {
+    await deleteDoc(doc(db, 'notesFrais', id));
+    await logAudit('ndf_delete', `Note de frais supprimée — ${ndfFullName(n)} — ${ndfTotal(n)}€`);
+    closeModal('modal-ndf');
+    showToast('Note supprimée', 'success');
+  } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
+};
+
+// ── Fiche A4 imprimable ──
+window.ndfPrint = (id) => {
+  const n = id ? allNotes.find(x => x.id === id) : null;
+  const e = v => escHTML(v ?? '');
+  const cb = on => `<span class="cb">${on ? 'X' : ''}</span>`;
+  const fld = (v, w) => `<span class="fld" style="min-width:${w}mm">${e(v)}</span>`;
+  const amt = v => v ? ndfNum(v).toFixed(2).replace('.', ',') : '';
+  const lignes = n?.lignes || [];
+  const total = n ? ndfTotal(n) : 0;
+  const q = n?.qualite;
+
+  const rows = Array.from({ length: NDF_MAX_LINES }, (_, i) => {
+    const l = lignes[i];
+    return `<tr class="row">
+      <td class="c">${l ? ndfDateShort(l.date) : ''}</td>
+      <td>${l ? e(l.magasin) : ''}</td>
+      <td>${l ? e(l.objet) : ''}</td>
+      <td>${l ? e(l.usage) : ''}</td>
+      <td class="pay"><div>${cb(l?.paiement === 'cb')} CB perso</div><div>${cb(l?.paiement === 'especes')} Espèces</div></td>
+      <td class="r">${l ? amt(l.montant) + ' €' : ''}</td>
+    </tr>`;
+  }).join('');
+
+  const vir = n?.statut === 'remboursee' && n.dateRemboursement ? ndfDateFR(n.dateRemboursement) : '';
+  const virHTML = vir ? `<span class="fld" style="min-width:24mm">${vir}</span>` : `<span class="fld" style="min-width:7mm"></span>/<span class="fld" style="min-width:7mm"></span>/20<span class="fld" style="min-width:7mm"></span>`;
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>Note de frais${n ? ' — ' + e(ndfFullName(n)) : ''}</title>
+<style>
+  @page { size: A4; margin: 15mm 13mm 16mm 13mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 9.5pt; line-height: 1.25; width: 184mm; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1.2pt solid #000; padding-bottom: 2mm; }
+  .head .org { font-weight: bold; font-size: 13pt; letter-spacing: 0.06em; }
+  .head .legal { font-size: 8.5pt; }
+  h1 { font-size: 17pt; text-align: center; margin: 4.5mm 0 1mm; letter-spacing: 0.08em; }
+  .subtitle { text-align: center; font-size: 9.5pt; margin-bottom: 4.5mm; }
+  .fld { display: inline-block; border-bottom: 0.6pt solid #000; padding: 0 1.5mm; min-height: 4.6mm; vertical-align: bottom; }
+  .ident { display: flex; gap: 6mm; margin-bottom: 3mm; white-space: nowrap; }
+  .ident > div { display: flex; gap: 1.5mm; align-items: flex-end; }
+  .qual { margin-bottom: 4mm; display: flex; gap: 5mm; align-items: center; flex-wrap: nowrap; white-space: nowrap; }
+  .cb { display: inline-block; width: 3.2mm; height: 3.2mm; border: 0.8pt solid #000; text-align: center; line-height: 3mm; font-size: 7.5pt; font-weight: bold; vertical-align: -0.6mm; margin-right: 1mm; }
+  table { border-collapse: collapse; table-layout: fixed; width: 184mm; }
+  th { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.03em; border: 0.8pt solid #000; background: #e8e8e8; padding: 1.5mm 1mm; text-align: left; height: 8mm; }
+  tr.row td { height: 17mm; border: 0.8pt solid #000; padding: 1.2mm 1.4mm; vertical-align: top; font-size: 8.5pt; overflow: hidden; word-wrap: break-word; }
+  td.c { text-align: center; }
+  td.r, th.r { text-align: right; white-space: nowrap; }
+  td.pay { font-size: 8pt; }
+  td.pay div { margin: 0.8mm 0 1.6mm; white-space: nowrap; }
+  tr.tot td { height: 9mm; vertical-align: middle; }
+  td.tot-note { border: none; font-size: 8.5pt; font-style: italic; padding-left: 0; }
+  td.tot-l { border: 1.2pt solid #000; font-weight: bold; text-align: center; letter-spacing: 0.05em; }
+  td.tot-v { border: 1.2pt solid #000; font-weight: bold; text-align: right; padding-right: 1.4mm; white-space: nowrap; }
+  .justifs { margin: 3mm 0 3.5mm; display: flex; gap: 2mm; align-items: flex-end; white-space: nowrap; }
+  .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .sig { border: 0.8pt solid #000; padding: 2.5mm 3mm; height: 37mm; display: flex; flex-direction: column; }
+  .sig .t { font-weight: bold; font-size: 9.5pt; letter-spacing: 0.04em; margin-bottom: 1.5mm; }
+  .sig .txt { font-size: 8.5pt; margin-bottom: 2.5mm; }
+  .sig .ln { display: flex; gap: 1.5mm; align-items: flex-end; margin-bottom: 2mm; white-space: nowrap; font-size: 9pt; }
+  .sig .ln .fld { flex: 1; }
+  .treso { margin-top: 3.5mm; border: 1.2pt solid #000; padding: 2.5mm 3mm; display: flex; align-items: flex-end; gap: 7mm; white-space: nowrap; }
+  .treso .t { font-weight: bold; letter-spacing: 0.06em; }
+  .treso > div { display: flex; gap: 1.5mm; align-items: flex-end; }
+  .foot { margin-top: 3.5mm; font-size: 8.5pt; }
+  .foot b { display: block; margin-bottom: 1.2mm; }
+</style></head><body>
+  <div class="head">
+    <div class="org">PLAY THAU'GETHER</div>
+    <div class="legal">Association loi 1901 · RNA W343034061 · 34110 Frontignan</div>
+  </div>
+
+  <h1>NOTE DE FRAIS</h1>
+  <div class="subtitle">Remboursement de dépenses engagées pour le compte de l'association</div>
+
+  <div class="ident">
+    <div>Nom : ${fld(n?.nom, 50)}</div>
+    <div>Prénom : ${fld(n?.prenom, 45)}</div>
+    <div>Date de la note : ${fld(n ? ndfDateFR(n.dateNote) : '', 24)}</div>
+  </div>
+  <div class="qual">
+    <span>Qualité :</span>
+    <span>${cb(q === 'bureau')}Membre du bureau</span>
+    <span>${cb(q === 'benevole')}Bénévole</span>
+    <span>${cb(q === 'adherent')}Adhérent</span>
+    <span>${cb(q === 'autre')}Autre : ${fld(q === 'autre' ? n?.qualiteAutre : '', 32)}</span>
+  </div>
+
+  <table>
+    <colgroup><col style="width:17mm"><col style="width:30mm"><col style="width:56mm"><col style="width:40mm"><col style="width:22mm"><col style="width:19mm"></colgroup>
+    <thead><tr><th>Date</th><th>Magasin / site</th><th>Objet de la dépense</th><th>Événement / usage</th><th>Paiement</th><th class="r">Montant</th></tr></thead>
+    <tbody>
+      ${rows}
+      <tr class="tot">
+        <td colspan="4" class="tot-note">Un justificatif (facture, ticket) par dépense, obligatoire.</td>
+        <td class="tot-l">TOTAL</td>
+        <td class="tot-v">${n ? amt(total) + ' €' : '€'}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="justifs">Justificatifs joints : nombre ${fld(n?.nbJustifs ?? '', 12)} dont papier ${fld(n?.nbPapier ?? '', 12)} numérique ${fld(n?.nbNumerique ?? '', 12)}</div>
+
+  <div class="sigs">
+    <div class="sig">
+      <div class="t">LE DEMANDEUR</div>
+      <div class="txt">Je certifie que ces dépenses ont été engagées pour le compte de l'association et ne m'ont pas déjà été remboursées.</div>
+      <div class="ln">Date : ${fld(n ? ndfDateFR(n.dateNote) : '', 30)}</div>
+      <div class="ln">Signature :</div>
+    </div>
+    <div class="sig">
+      <div class="t">VALIDATION DU BUREAU</div>
+      <div class="txt">Autre membre du bureau : « Bon pour remboursement ».</div>
+      <div class="ln">Nom et fonction : ${fld(n?.validateurNom ? n.validateurNom + (n.validateurFonction ? ' — ' + n.validateurFonction : '') : '', 40)}</div>
+      <div class="ln">Date : ${fld(n?.dateValidation ? ndfDateFR(n.dateValidation) : '', 30)}</div>
+      <div class="ln">Signature :</div>
+    </div>
+  </div>
+
+  <div class="treso">
+    <span class="t">TRÉSORERIE</span>
+    <div>Viré le ${virHTML}</div>
+    <div>Montant : ${fld(n?.statut === 'remboursee' ? amt(total) : '', 22)} €</div>
+    <div>${cb(!!n?.saisiCompta)}Saisi dans Compta</div>
+  </div>
+
+  <div class="foot">
+    <b>Tous les justificatifs papier sont numérisés et ajoutés à l'opération dans Compta.</b>
+    Note à classer avec ses justificatifs (rubrique Factures et tickets). Remboursements listés par bénéficiaire au rapport financier (art. 14 des statuts).
+  </div>
+<script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Autorise les fenêtres pop-up pour imprimer', 'error'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  showToast("Impression : échelle 100 %, marges « par défaut »", 'success');
+};
+
+// ── Récap AG : remboursements par bénéficiaire ──
+function ndfRecapData() {
+  const sel = document.getElementById('ndf-recap-exo');
+  const now = new Date();
+  const curExo = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  const rembs = allNotes.filter(n => n.statut === 'remboursee' && n.dateRemboursement);
+  const exos = [...new Set([curExo, ...rembs.map(n => ndfExoOf(n.dateRemboursement))])].sort((a, b) => b - a);
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = exos.map(y => `<option value="${y}">Exercice ${y}-${y + 1}</option>`).join('');
+    sel.value = exos.includes(+prev) ? prev : String(exos[0]);
+  }
+  const year = sel ? +sel.value : curExo;
+  const notes = rembs.filter(n => ndfExoOf(n.dateRemboursement) === year)
+    .sort((a, b) => a.dateRemboursement.localeCompare(b.dateRemboursement));
+  const groups = {};
+  notes.forEach(n => {
+    const k = ndfNorm(n.prenom + n.nom);
+    const g = groups[k] = groups[k] || { nom: ndfFullName(n), qualite: ndfQualite(n), notes: [], total: 0 };
+    g.notes.push(n);
+    g.total += ndfTotal(n);
+    g.qualite = ndfQualite(n);
+  });
+  const list = Object.values(groups).sort((a, b) => b.total - a.total);
+  return { year, list, total: list.reduce((s, g) => s + g.total, 0), nb: notes.length };
+}
+
+window.ndfRenderRecap = () => {
+  const el = document.getElementById('ndf-recap');
+  if (!el) return;
+  const { list, total, nb } = ndfRecapData();
+  if (!list.length) { el.innerHTML = '<p class="ndf-hint">Aucun remboursement sur cet exercice.</p>'; return; }
+  el.innerHTML = `<table class="ndf-recap-tbl">
+    <thead><tr><th>Bénéficiaire</th><th>Qualité</th><th style="text-align:center">Notes</th><th style="text-align:right">Total remboursé</th></tr></thead>
+    <tbody>${list.map(g => `
+      <tr><td><b>${escHTML(g.nom)}</b><div class="ndf-muted">${g.notes.map(n => `${ndfDateFR(n.dateRemboursement)} : ${fmt(ndfTotal(n))}${n.modeRemboursement === 'especes' ? ' (espèces)' : ''}`).join(' · ')}</div></td>
+        <td>${escHTML(g.qualite)}</td><td style="text-align:center">${g.notes.length}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace">${fmt(g.total)}</td></tr>`).join('')}
+      <tr class="ndf-recap-total"><td colspan="2">Total des remboursements</td><td style="text-align:center">${nb}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace">${fmt(total)}</td></tr>
+    </tbody></table>`;
+};
+
+window.ndfRecapCSV = () => {
+  const { year, list, total, nb } = ndfRecapData();
+  if (!list.length) { showToast('Aucun remboursement sur cet exercice', 'error'); return; }
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const eur = v => v.toFixed(2).replace('.', ',');
+  const lines = [
+    [`Remboursements de frais par bénéficiaire — exercice ${year}-${year + 1} (du 01/09/${year} au 31/08/${year + 1})`].map(q).join(';'),
+    '',
+    ['Bénéficiaire', 'Qualité', 'Nombre de notes', 'Total remboursé (€)'].map(q).join(';'),
+    ...list.map(g => [g.nom, g.qualite, g.notes.length, eur(g.total)].map(q).join(';')),
+    ['TOTAL', '', nb, eur(total)].map(q).join(';'),
+    '',
+    ['Détail', '', '', ''].map(q).join(';'),
+    ['Bénéficiaire', 'Date de la note', 'Date du remboursement', 'Mode', 'Montant (€)', 'Validée par'].map(q).join(';'),
+    ...list.flatMap(g => g.notes.map(n => [g.nom, ndfDateFR(n.dateNote), ndfDateFR(n.dateRemboursement), n.modeRemboursement === 'especes' ? 'Espèces' : 'Virement', eur(ndfTotal(n)), n.validateurNom ? n.validateurNom + (n.validateurFonction ? ' (' + n.validateurFonction + ')' : '') : ''].map(q).join(';'))),
+  ];
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PTG_Remboursements_frais_${year}-${year + 1}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📊 Récap CSV téléchargé ✓', 'success');
+};
+
+window.ndfRecapPrint = () => {
+  const { year, list, total, nb } = ndfRecapData();
+  if (!list.length) { showToast('Aucun remboursement sur cet exercice', 'error'); return; }
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Remboursements de frais ${year}-${year + 1}</title>
+<style>
+  @page { size: A4; margin: 15mm 13mm 16mm 13mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 10pt; margin: 0; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1.2pt solid #000; padding-bottom: 2mm; }
+  .head .org { font-weight: bold; font-size: 13pt; letter-spacing: 0.06em; }
+  .head .legal { font-size: 8.5pt; }
+  h1 { font-size: 15pt; margin: 7mm 0 1mm; }
+  .sub { margin-bottom: 6mm; font-size: 9.5pt; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
+  th { background: #e8e8e8; border: 0.8pt solid #000; padding: 2mm; text-align: left; font-size: 8.5pt; text-transform: uppercase; }
+  td { border: 0.8pt solid #000; padding: 2mm; vertical-align: top; }
+  .r { text-align: right; white-space: nowrap; } .c { text-align: center; }
+  tr.tot td { font-weight: bold; border-top: 1.5pt solid #000; }
+  h2 { font-size: 11pt; margin: 4mm 0 2mm; }
+  .note { font-size: 8.5pt; margin-top: 6mm; }
+</style></head><body>
+<div class="head"><div class="org">PLAY THAU'GETHER</div><div class="legal">Association loi 1901 · RNA W343034061 · 34110 Frontignan</div></div>
+<h1>Remboursements de frais par bénéficiaire</h1>
+<div class="sub">Exercice ${year}-${year + 1} · du 1er septembre ${year} au 31 août ${year + 1} · annexe au rapport financier (article 14 des statuts)</div>
+<table><thead><tr><th>Bénéficiaire</th><th>Qualité</th><th class="c">Notes</th><th class="r">Total remboursé</th></tr></thead><tbody>
+${list.map(g => `<tr><td>${escHTML(g.nom)}</td><td>${escHTML(g.qualite)}</td><td class="c">${g.notes.length}</td><td class="r">${fmt(g.total)}</td></tr>`).join('')}
+<tr class="tot"><td colspan="2">Total des remboursements</td><td class="c">${nb}</td><td class="r">${fmt(total)}</td></tr></tbody></table>
+<h2>Détail des notes remboursées</h2>
+<table><thead><tr><th>Bénéficiaire</th><th>Note du</th><th>Remboursée le</th><th>Mode</th><th>Validée par</th><th class="r">Montant</th></tr></thead><tbody>
+${list.flatMap(g => g.notes.map(n => `<tr><td>${escHTML(g.nom)}</td><td>${ndfDateFR(n.dateNote)}</td><td>${ndfDateFR(n.dateRemboursement)}</td><td>${n.modeRemboursement === 'especes' ? 'Espèces' : 'Virement'}${n.regularisation ? ' (régul.)' : ''}</td><td>${escHTML(n.validateurNom ? n.validateurNom + (n.validateurFonction ? ' — ' + n.validateurFonction : '') : '—')}</td><td class="r">${fmt(ndfTotal(n))}</td></tr>`)).join('')}
+</tbody></table>
+<div class="note">Édité le ${new Date().toLocaleDateString('fr-FR')} depuis PTG Compta. Les notes de frais et leurs justificatifs sont classés dans la rubrique Factures et tickets.</div>
+<script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Autorise les fenêtres pop-up pour imprimer', 'error'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 };
 
 // Close modals on overlay click

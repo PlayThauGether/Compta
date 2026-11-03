@@ -848,6 +848,22 @@
 
   /* EMPTY */
   .empty-state { text-align: center; padding: 48px 24px; color: var(--text3); }
+  .ins-box { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .ins-box summary { cursor: pointer; font-size: 14px; color: var(--text2); list-style: none; }
+  .ins-box summary::-webkit-details-marker { display: none; }
+  .ins-box summary::after { content: ' ▾'; color: var(--text3); }
+  .ins-box[open] summary::after { content: ' ▴'; }
+  .ins-box summary b { color: var(--text); }
+  .ins-warn { color: var(--orange); font-size: 12px; }
+  .ins-tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  .ins-tbl th { text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .ins-tbl th:first-child, .ins-tbl td:first-child { text-align: left; }
+  .ins-tbl td { text-align: right; padding: 7px 8px; font-family: 'JetBrains Mono', monospace; }
+  .ins-tbl td:first-child { font-family: 'Inter', sans-serif; }
+  .ins-tbl tr.ins-type td { font-weight: 700; color: var(--text); border-top: 1px solid var(--border); }
+  .ins-tbl tr.ins-lieu td { color: var(--text2); font-size: 12px; padding-top: 4px; padding-bottom: 4px; }
+  .ins-tbl tr.ins-lieu td:first-child { padding-left: 22px; }
+  .ins-tbl tr.ins-total td { font-weight: 700; color: var(--accent); border-top: 2px solid var(--border); }
   .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
   .empty-state p { font-size: 14px; }
 
@@ -3355,6 +3371,45 @@ window.toggleRecapCivil = (on) => {
   renderRecapPage();
 };
 
+// ── INSCRITS AUX SOIRÉES (Récap + Rapport AG) ──
+// Soirées = entrées avec un type de soirée ou un lieu, hors soirées annulées.
+function inscritsStats(ops) {
+  const soirees = ops.filter(o => o.type === 'entree' && (o.typeSoiree || o.lieu) && !o.soireeAnnulee);
+  const types = {};
+  soirees.forEach(o => {
+    const t = types[o.typeSoiree || 'Autre soirée'] = types[o.typeSoiree || 'Autre soirée'] || { n: 0, ins: 0, nr: 0, lieux: {} };
+    const l = t.lieux[o.lieu || 'Lieu non précisé'] = t.lieux[o.lieu || 'Lieu non précisé'] || { n: 0, ins: 0, nr: 0 };
+    const ins = parseInt(o.nbInscrits, 10) || 0;
+    t.n++; l.n++;
+    if (o.nbInscrits) { t.ins += ins; t.nr++; l.ins += ins; l.nr++; }
+  });
+  const list = Object.entries(types).map(([type, t]) => ({
+    type, ...t,
+    lieux: Object.entries(t.lieux).map(([lieu, l]) => ({ lieu, ...l })).sort((a, b) => b.ins - a.ins || b.n - a.n),
+  })).sort((a, b) => b.ins - a.ins || b.n - a.n);
+  const total = list.reduce((s, t) => s + t.ins, 0);
+  const nr = list.reduce((s, t) => s + t.nr, 0);
+  return { list, total, n: soirees.length, nr };
+}
+const insMoy = (ins, nr) => nr ? (ins / nr).toFixed(1).replace('.', ',').replace(',0', '') : '—';
+
+function inscritsRecapHTML(ops) {
+  const st = inscritsStats(ops);
+  if (!st.n) return '';
+  const manque = st.n - st.nr;
+  return `<details class="ins-box">
+    <summary>👥 <b>${st.total} inscrit${st.total > 1 ? 's' : ''}</b> sur ${st.n} soirée${st.n > 1 ? 's' : ''} · moyenne ${insMoy(st.total, st.nr)} par soirée${manque ? ` <span class="ins-warn">(${manque} soirée${manque > 1 ? 's' : ''} sans nombre d'inscrits)</span>` : ''}</summary>
+    <table class="ins-tbl">
+      <thead><tr><th>Soirée / lieu</th><th>Soirées</th><th>Inscrits</th><th>Moyenne</th></tr></thead>
+      <tbody>${st.list.map(t => `
+        <tr class="ins-type"><td>${escHTML(t.type)}</td><td>${t.n}</td><td>${t.ins}</td><td>${insMoy(t.ins, t.nr)}</td></tr>
+        ${t.lieux.map(l => `<tr class="ins-lieu"><td>↳ ${escHTML(l.lieu)}</td><td>${l.n}</td><td>${l.ins}</td><td>${insMoy(l.ins, l.nr)}</td></tr>`).join('')}`).join('')}
+        <tr class="ins-total"><td>Total</td><td>${st.n}</td><td>${st.total}</td><td>${insMoy(st.total, st.nr)}</td></tr>
+      </tbody>
+    </table>
+  </details>`;
+}
+
 function renderRecapPage() {
   const listEl = document.getElementById('recap-years-list');
   if (!listEl) return;
@@ -3416,6 +3471,7 @@ function renderRecapPage() {
             <button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="downloadRecapCSV(${year})">⬇️ CSV</button>
           </div>
         </div>
+        ${inscritsRecapHTML(ops)}
       </div>`;
   }).join('');
 }
@@ -3931,7 +3987,7 @@ ${rptHero("Play Thau'Gether · Assemblée générale", 'Rapport financier', `${p
       <li><span>03</span>Mois par mois</li>
       <li><span>04</span>Trésorerie</li>
       <li><span>05</span>Compte de résultat</li>
-      <li><span>06</span>L'activité en chiffres</li>
+      <li><span>06</span>Activité et fréquentation</li>
       <li><span>07</span>Plus grosses dépenses</li>
       <li><span>08</span>Remboursements</li>
       ${withJournal ? '<li><span>A</span>Journal complet</li>' : ''}
@@ -4004,6 +4060,17 @@ ${rptHero("Play Thau'Gether · Assemblée générale", 'Rapport financier', `${p
 </section>
 
 <section class="pb">
+<h2><span class="num">06b</span>Fréquentation des soirées <span class="q">Nombre d'inscrits par type de soirée et par lieu</span></h2>
+<div class="card">${(() => {
+  const st = inscritsStats(opsY);
+  if (!st.n) return '<p class="explain" style="margin:0">Aucune soirée sur cette période.</p>';
+  return `<table class="tbl"><thead><tr><th>Soirée / lieu</th><th class="pct">Soirées</th><th class="amt">Inscrits</th><th class="amt">Moyenne par soirée</th></tr></thead><tbody>
+    ${st.list.map(t => `<tr><td><b>${escHTML(t.type)}</b></td><td class="pct"><b>${t.n}</b></td><td class="amt"><b>${t.ins}</b></td><td class="amt"><b>${insMoy(t.ins, t.nr)}</b></td></tr>` +
+      t.lieux.map(l => `<tr class="split"><td style="padding-left:18px">↳ ${escHTML(l.lieu)}</td><td class="pct">${l.n}</td><td class="amt">${l.ins}</td><td class="amt">${insMoy(l.ins, l.nr)}</td></tr>`).join('')).join('')}
+  </tbody><tfoot><tr><td>Total</td><td class="pct">${st.n}</td><td class="amt">${st.total}</td><td class="amt">${insMoy(st.total, st.nr)}</td></tr></tfoot></table>
+  ${st.n - st.nr ? `<p class="explain" style="margin:6px 0 0">${st.n - st.nr} soirée${st.n - st.nr > 1 ? 's' : ''} sans nombre d'inscrits renseigné : non comptée${st.n - st.nr > 1 ? 's' : ''} dans les moyennes.</p>` : ''}`;
+})()}</div>
+
 <h2><span class="num">07</span>Les 5 plus grosses dépenses</h2>
 <div class="card"><table class="tbl"><thead><tr><th style="width:84px">Date</th><th>Achat</th><th>Poste</th><th class="amt">Montant</th><th class="pct">Part</th></tr></thead><tbody>
   ${top.map(op => { const b = pcgBreakdown(op); return `<tr><td>${opDate(op).toLocaleDateString('fr-FR')}</td><td>${escHTML(rptLibelle(op))}</td><td>${b.length > 1 ? 'Plusieurs postes' : escHTML(b[0] ? rptPlain(b[0].code) : (op.categorie || ''))}</td><td class="amt">${fmt(op.montant || 0)}</td><td class="pct">${rptPct(op.montant || 0, totS)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">Aucune dépense</td></tr>'}

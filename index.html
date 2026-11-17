@@ -1241,6 +1241,7 @@
         <optgroup label="Entrées">
           <option value="Don">🎁 Don · 7541</option>
           <option value="Adhésion">🪪 Adhésion · 756</option>
+          <option value="Prestation">🧾 Prestation (devis / bon de commande) · 706</option>
           <option value="Subvention">🏛️ Subvention · 74</option>
           <option value="Autre entrée">📦 Autre entrée · 758</option>
         </optgroup>
@@ -1356,6 +1357,7 @@
         <optgroup label="Entrées">
           <option value="Don">🎁 Don · 7541</option>
           <option value="Adhésion">🪪 Adhésion · 756</option>
+          <option value="Prestation">🧾 Prestation (devis / bon de commande) · 706</option>
           <option value="Billetterie">🎟️ Billetterie · 706</option>
           <option value="Recette soirée">🎲 Recette soirée · 706</option>
           <option value="Subvention">🏛️ Subvention · 74</option>
@@ -1905,7 +1907,7 @@ const PCG_COMPTES = {
   '628': 'Charges diverses'
 };
 const PCG_CAT = {
-  'Don': '7541', 'Adhésion': '756', 'Billetterie': '706', 'Recette soirée': '706', 'Subvention': '74', 'Autre entrée': '758',
+  'Don': '7541', 'Adhésion': '756', 'Prestation': '706', 'Billetterie': '706', 'Recette soirée': '706', 'Subvention': '74', 'Autre entrée': '758',
   'Nourriture/Boisson': '6068', 'Repas bénévoles': '6257', 'Matériel': '6063', 'Fournitures': '6064', 'Lots': '62341', 'Cadeaux': '62342', 'Lots / cadeaux': '6234', 'Achats multiples': '606',
   'Local': '613', 'Communication': '623', 'Abonnements': '651', 'Transport': '625', 'Remboursement': '628', 'Frais bancaire': '627', 'Autre sortie': '628'
 };
@@ -3492,7 +3494,7 @@ const RPT = {
 
 // Libellés « en clair » des comptes, pour les lecteurs non comptables
 const RPT_PLAIN = {
-  '7541': 'Dons (soirées et dons manuels)', '756': 'Adhésions', '706': 'Billetterie et recettes d\'activités',
+  '7541': 'Dons (soirées et dons manuels)', '756': 'Adhésions', '706': 'Prestations et recettes d\'activités',
   '74': 'Subventions', '758': 'Autres recettes',
   '6068': 'Boissons et nourriture des soirées', '6063': 'Matériel (jeux, déguisements, accessoires)',
   '6064': 'Fournitures (papeterie, consommables)', '62341': 'Lots des jeux (quiz, blind test)',
@@ -3796,11 +3798,11 @@ window.printRecapType = (year, kind) => {
   if (isE) {
     const origine = {};
     ops.forEach(op => {
-      const k = op.helloasso ? 'HelloAsso' : op.donMode === 'bancaire' ? 'Dons bancaires' : (op.typeSoiree || op.donMode) ? 'Dons en liquide' : (op.categorie || 'Autres entrées');
+      const k = op.helloasso ? 'HelloAsso' : op.categorie === 'Prestation' ? 'Prestations (devis / bon de commande)' : op.donMode === 'bancaire' ? 'Dons bancaires' : (op.typeSoiree || op.donMode) ? 'Dons en liquide' : (op.categorie || 'Autres entrées');
       origine[k] = (origine[k] || 0) + (op.montant || 0);
     });
     const parType = {};
-    ops.filter(o => o.typeSoiree).forEach(op => { const t = parType[op.typeSoiree] = parType[op.typeSoiree] || { v: 0, n: 0 }; t.v += op.montant || 0; t.n++; });
+    ops.filter(o => o.typeSoiree).forEach(op => { const t = parType[op.typeSoiree] = parType[op.typeSoiree] || { v: 0, n: 0 }; t.v += op.categorie === 'Prestation' ? 0 : (op.montant || 0); t.n++; });
     special = `<div class="grid2">
       <div class="card"><h3>Origine des entrées</h3>${rptHBars(Object.entries(origine).sort((a, b) => b[1] - a[1]).map(([label, v]) => ({ label, v })), ACC)}</div>
       <div class="card"><h3>Dons par type de soirée</h3>${rptHBars(Object.entries(parType).sort((a, b) => b[1].v - a[1].v).slice(0, 7).map(([label, t]) => ({ label, v: t.v, sub: t.n + ' soirée' + (t.n > 1 ? 's' : '') })), ACC)}</div>
@@ -3899,13 +3901,16 @@ window.printRapportAG = (year) => {
   const soirees = E.filter(o => o.typeSoiree || o.lieu);
   const tenues = soirees.filter(o => !o.soireeAnnulee);
   const annulees = soirees.length - tenues.length;
-  const avecDon = tenues.filter(o => !o.pasDeDon && (o.montant || 0) > 0);
-  const totSoirees = tenues.reduce((s, o) => s + (o.montant || 0), 0);
+  const donOf = o => o.categorie === 'Prestation' ? 0 : (o.montant || 0);
+  const avecDon = tenues.filter(o => !o.pasDeDon && donOf(o) > 0);
+  const totSoirees = tenues.reduce((s, o) => s + donOf(o), 0);
+  const prestations = E.filter(o => o.categorie === 'Prestation').reduce((s, o) => s + (o.montant || 0), 0);
+  const nbDons = tenues.filter(o => o.categorie !== 'Prestation').length;
   const inscrits = tenues.reduce((s, o) => s + (o.nbInscrits || 0), 0);
   const parType = {}, parLieu = {};
   tenues.forEach(o => {
-    if (o.typeSoiree) { const t = parType[o.typeSoiree] = parType[o.typeSoiree] || { v: 0, n: 0 }; t.v += o.montant || 0; t.n++; }
-    if (o.lieu) { const l = parLieu[o.lieu] = parLieu[o.lieu] || { v: 0, n: 0 }; l.v += o.montant || 0; l.n++; }
+    if (o.typeSoiree) { const t = parType[o.typeSoiree] = parType[o.typeSoiree] || { v: 0, n: 0 }; t.v += donOf(o); t.n++; }
+    if (o.lieu) { const l = parLieu[o.lieu] = parLieu[o.lieu] || { v: 0, n: 0 }; l.v += donOf(o); l.n++; }
   });
   const adhesions = E.reduce((s, o) => s + (o.helloasso ? (o.haAdhesions || 0) : (o.categorie === 'Adhésion' ? (o.montant || 0) : 0)), 0);
   const subventions = E.filter(o => o.categorie === 'Subvention').reduce((s, o) => s + (o.montant || 0), 0);
@@ -3931,12 +3936,13 @@ window.printRapportAG = (year) => {
   const bestRec = months.reduce((a, b) => b.rec > a.rec ? b : a, months[0]);
   const bestType = Object.entries(parType).sort((a, b) => b[1].v - a[1].v)[0];
   const highlights = [
-    tenues.length ? `<b>${tenues.length} soirée${tenues.length > 1 ? 's' : ''}</b> organisée${tenues.length > 1 ? 's' : ''}${inscrits ? `, <b>${inscrits} inscrits</b> au total` : ''}, pour <b>${fmt(totSoirees)}</b> de dons (en moyenne ${fmt(totSoirees / tenues.length)} par soirée).` : '',
+    tenues.length ? `<b>${tenues.length} soirée${tenues.length > 1 ? 's' : ''}</b> organisée${tenues.length > 1 ? 's' : ''}${inscrits ? `, <b>${inscrits} inscrits</b> au total` : ''}, pour <b>${fmt(totSoirees)}</b> de dons (en moyenne ${fmt(nbDons ? totSoirees / nbDons : 0)} par soirée)${prestations ? ' ; les soirées payées sur devis sont comptées à part, en prestations' : ''}.` : '',
     bestType ? `Le format qui a le plus rapporté : <b>${escHTML(bestType[0])}</b>, avec ${fmt(bestType[1].v)} de dons sur ${bestType[1].n} soirée${bestType[1].n > 1 ? 's' : ''}.` : '',
     prod1 ? `Première source de recettes : <b>${rptPlain(prod1.code)}</b> (${rptPct(prod1.v, prod.total)} des recettes).` : '',
     chg1 ? `Premier poste de dépense : <b>${rptPlain(chg1.code)}</b> (${rptPct(chg1.v, chg.total)} des dépenses).` : '',
     bestRec && bestRec.rec > 0 ? `Le mois le plus fort en recettes : <b>${bestRec.long}</b> (${fmt(bestRec.rec)}).` : '',
     adhesions || subventions ? `Adhésions : <b>${fmt(adhesions)}</b>${subventions ? ` · Subventions reçues : <b>${fmt(subventions)}</b>` : ''}.` : '',
+    prestations ? `Prestations facturées (devis / bon de commande) : <b>${fmt(prestations)}</b>.` : '',
     ndfList.length ? `Remboursements de frais aux membres : <b>${fmt(ndfTot)}</b> (${ndfY.length} note${ndfY.length > 1 ? 's' : ''}, détail en partie 08).` : '',
     `La trésorerie passe de <b>${fmt(fundsStart)}</b> à <b>${fmt(fundsEnd)}</b> (${fundsEnd - fundsStart >= 0 ? '+' : '−'}${fmt(Math.abs(fundsEnd - fundsStart))}).`,
   ].filter(Boolean);
@@ -4050,7 +4056,7 @@ ${rptHero("Play Thau'Gether · Assemblée générale", 'Rapport financier', `${p
 <div class="kpis">
   <div class="kpi"><div class="kpi-l">Soirées tenues</div><div class="kpi-v">${tenues.length}</div><div class="kpi-s">${annulees ? annulees + ' annulée' + (annulees > 1 ? 's' : '') : 'aucune annulée'}</div></div>
   <div class="kpi"><div class="kpi-l">Dons des soirées</div><div class="kpi-v">${fmt(totSoirees)}</div><div class="kpi-s">${avecDon.length} soirée${avecDon.length > 1 ? 's' : ''} avec dons</div></div>
-  <div class="kpi"><div class="kpi-l">Don moyen par soirée</div><div class="kpi-v">${fmt(tenues.length ? totSoirees / tenues.length : 0)}</div><div class="kpi-s">${inscrits ? inscrits + ' inscrits au total' : '&nbsp;'}</div></div>
+  <div class="kpi"><div class="kpi-l">Don moyen par soirée</div><div class="kpi-v">${fmt(nbDons ? totSoirees / nbDons : 0)}</div><div class="kpi-s">${inscrits ? inscrits + ' inscrits au total' : '&nbsp;'}</div></div>
   <div class="kpi"><div class="kpi-l">Adhésions · Subventions</div><div class="kpi-v" style="font-size:15px">${fmt(adhesions)}</div><div class="kpi-s">subventions : ${fmt(subventions)}</div></div>
 </div>
 <div class="grid2">

@@ -1539,7 +1539,7 @@
         </div>
       </div>
       <div class="form-group" id="depot-cash-group">
-        <label>Dons en espèces inclus dans ce dépôt</label>
+        <label>Espèces incluses dans ce dépôt</label>
         <div id="depot-cash-list"></div>
         <div class="ndf-hint" id="depot-cash-total"></div>
       </div>
@@ -1862,6 +1862,7 @@ function initApp() {
 
   // Charger la config (soirées & lieux) pour tout le monde
   loadConfig();
+  loadCashConfig();
 
   // Notes de frais (temps réel)
   ndfSubscribe();
@@ -1877,70 +1878,140 @@ function initApp() {
 
 // ── DASHBOARD ──
 // ── ESPÈCES À DÉPOSER ──
-// Un don en liquide reste « à déposer » tant qu'aucun dépôt ne le contient (champ donsIds du dépôt)
-// et qu'il n'a pas été marqué comme déposé avant la mise en place du suivi (depotId = 'historique').
+// L'argent liquide est mélangé dans la caisse : on suit un « pot » d'espèces.
+// Entrées du pot : dons en liquide (sauf ceux marqués déposés avant le suivi) + reliquats ajoutés à la main.
+// Sorties du pot : dépôts à la banque faits avec le suivi (montant réellement déposé).
+// Les dépôts sont imputés aux dons les plus anciens d'abord : un dépôt partiel (billets seulement) laisse un reste.
+let cashReliquats = [];   // config/especes : [{ montant, date, note }]
+let _cashCache = null;
+
+async function loadCashConfig() {
+  try {
+    const d = await getDoc(doc(db, 'config', 'especes'));
+    cashReliquats = d.exists() ? (d.data().reliquats || []) : [];
+  } catch (e) { console.warn('config/especes', e); }
+  _cashCache = null;
+  if (typeof renderDashboard === 'function' && document.getElementById('solde-caisse')) renderDashboard();
+}
+
+function isCashDon(op) { return op.type === 'entree' && op.donMode === 'liquide' && !op.helloasso && !op.soireeAnnulee && (op.montant || 0) > 0; }
 function cashDepositMap() {
   const map = {};
   allOps.filter(o => o.type === 'depot' && Array.isArray(o.donsIds)).forEach(dep => dep.donsIds.forEach(id => { map[id] = dep; }));
   return map;
 }
-function isCashDon(op) { return op.type === 'entree' && op.donMode === 'liquide' && !op.helloasso && !op.soireeAnnulee && (op.montant || 0) > 0; }
-function cashPending() {
-  const map = cashDepositMap();
-  return allOps.filter(o => isCashDon(o) && !o.depotId && !map[o.id]).sort((a, b) => opDate(a) - opDate(b));
+function cashItems(excludeDepotId = null) {
+  if (!excludeDepotId && _cashCache && _cashCache.ops === allOps && _cashCache.rel === cashReliquats) return _cashCache.items;
+  const items = allOps.filter(o => isCashDon(o) && o.depotId !== 'historique')
+    .map(o => ({ id: o.id, op: o, date: opDate(o), amount: o.montant || 0, label: rptLibelle(o) }));
+  cashReliquats.forEach((r, i) => items.push({ id: 'rel_' + i, rel: i, date: new Date((r.date || '2000-01-01') + 'T12:00:00'), amount: r.montant || 0, label: 'Reliquat non déposé' + (r.note ? ' — ' + r.note : '') }));
+  items.sort((x, y) => x.date - y.date);
+  let deposited = allOps.filter(o => o.type === 'depot' && o.id !== excludeDepotId && Array.isArray(o.donsIds) && (o.donsIds.length || o.suiviEspeces))
+    .reduce((s, o) => s + (o.montant || 0), 0);
+  items.forEach(it => {
+    const use = Math.min(deposited, it.amount);
+    it.remaining = Math.round((it.amount - use) * 100) / 100;
+    deposited = Math.round((deposited - use) * 100) / 100;
+  });
+  if (!excludeDepotId) _cashCache = { ops: allOps, rel: cashReliquats, items };
+  return items;
 }
+function cashPending() { return cashItems().filter(i => i.remaining > 0.004); }
+const cashPendingTotal = () => Math.round(cashPending().reduce((s, i) => s + i.remaining, 0) * 100) / 100;
+const cashItemLabel = i => `${i.date.toLocaleDateString('fr-FR')} — ${escHTML(i.label)}${i.remaining < i.amount - 0.004 ? ` <span class="ndf-muted">(reste sur ${fmt(i.amount)})</span>` : ''}`;
+
 let depotCashSel = new Set();
+let depotEditId = null;
+const depotPendingList = () => (depotEditId ? cashItems(depotEditId) : cashItems()).filter(i => i.remaining > 0.004);
 
 function renderDepotCashList() {
   const el = document.getElementById('depot-cash-list');
   if (!el) return;
-  const list = cashPending();
+  const list = depotPendingList();
   if (!list.length) {
-    el.innerHTML = '<p class="ndf-hint" style="margin:0">Aucun don en espèces en attente de dépôt.</p>';
+    el.innerHTML = '<p class="ndf-hint" style="margin:0">Aucune espèce en attente de dépôt.</p>';
     document.getElementById('depot-cash-total').textContent = '';
     return;
   }
-  el.innerHTML = list.map(op => `<label class="cash-row"><input type="checkbox" ${depotCashSel.has(op.id) ? 'checked' : ''} onchange="toggleDepotCash('${op.id}', this.checked)"/><span>${opDate(op).toLocaleDateString('fr-FR')} — ${escHTML(rptLibelle(op))}</span><b>${fmt(op.montant)}</b></label>`).join('') +
+  el.innerHTML = list.map(i => `<label class="cash-row"><input type="checkbox" ${depotCashSel.has(i.id) ? 'checked' : ''} onchange="toggleDepotCash('${i.id}', this.checked)"/><span>${cashItemLabel(i)}</span><b>${fmt(i.remaining)}</b></label>`).join('') +
     `<div class="cash-actions"><a href="#" onclick="event.preventDefault();depotCashAll(true)">Tout cocher</a> · <a href="#" onclick="event.preventDefault();depotCashAll(false)">Tout décocher</a></div>`;
-  updateDepotCashTotal();
+  updateDepotCashTotal(!!depotEditId && !depotCashTouched);
 }
-function updateDepotCashTotal() {
-  const sel = cashPending().filter(o => depotCashSel.has(o.id));
-  const t = sel.reduce((s, o) => s + (o.montant || 0), 0);
+function updateDepotCashTotal(keepAmount = false) {
+  const sel = depotPendingList().filter(i => depotCashSel.has(i.id));
+  const t = Math.round(sel.reduce((s, i) => s + i.remaining, 0) * 100) / 100;
   const el = document.getElementById('depot-cash-total');
   if (!el) return;
-  el.innerHTML = sel.length ? `${sel.length} don${sel.length > 1 ? 's' : ''} coché${sel.length > 1 ? 's' : ''} : <b style="color:var(--text)">${fmt(t)}</b> (montant du dépôt mis à jour)` : 'Aucun don coché : le dépôt ne fera entrer aucun don dans la caisse.';
-  if (sel.length) document.getElementById('depot-montant').value = t.toFixed(2);
+  el.innerHTML = sel.length
+    ? `Espèces cochées : <b style="color:var(--text)">${fmt(t)}</b>. Le montant du dépôt est rempli avec ce total : <b>si tu ne déposes que les billets, corrige-le avec le montant réellement déposé</b>, le reste (pièces) restera dans « Espèces à déposer ».`
+    : 'Rien de coché : le dépôt ne fera sortir aucune espèce du suivi.';
+  if (sel.length && !keepAmount) document.getElementById('depot-montant').value = t.toFixed(2);
 }
-window.toggleDepotCash = (id, on) => { if (on) depotCashSel.add(id); else depotCashSel.delete(id); updateDepotCashTotal(); };
-window.depotCashAll = (on) => { depotCashSel = on ? new Set(cashPending().map(o => o.id)) : new Set(); renderDepotCashList(); };
+let depotCashTouched = false;
+window.toggleDepotCash = (id, on) => { depotCashTouched = true; if (on) depotCashSel.add(id); else depotCashSel.delete(id); updateDepotCashTotal(); };
+window.depotCashAll = (on) => { depotCashTouched = true; depotCashSel = on ? new Set(depotPendingList().map(i => i.id)) : new Set(); renderDepotCashList(); };
 
 window.openEspeces = () => {
   const list = cashPending();
-  const tot = list.reduce((s, o) => s + (o.montant || 0), 0);
+  const tot = cashPendingTotal();
   const isAdm = currentUserData?.role === 'admin';
   document.getElementById('especes-list').innerHTML = list.length
-    ? list.map(op => isAdm
-        ? `<label class="cash-row"><input type="checkbox" class="hist-cb" value="${op.id}"/><span>${opDate(op).toLocaleDateString('fr-FR')} — ${escHTML(rptLibelle(op))}</span><b>${fmt(op.montant)}</b></label>`
-        : `<div class="cash-row" style="cursor:default"><span>${opDate(op).toLocaleDateString('fr-FR')} — ${escHTML(rptLibelle(op))}</span><b>${fmt(op.montant)}</b></div>`).join('')
+    ? list.map(i => (isAdm && i.op)
+        ? `<label class="cash-row"><input type="checkbox" class="hist-cb" value="${i.id}"/><span>${cashItemLabel(i)}</span><b>${fmt(i.remaining)}</b></label>`
+        : `<div class="cash-row" style="cursor:default"><span>${cashItemLabel(i)}</span><b>${fmt(i.remaining)}</b>${isAdm && i.rel !== undefined ? `<button class="ligne-del" title="Supprimer ce reliquat" onclick="removeCashReliquat(${i.rel})">✕</button>` : ''}</div>`).join('')
     : '<div class="empty-state" style="padding:20px"><div class="empty-icon">✅</div><p>Tout est déposé</p></div>';
   document.getElementById('especes-total').innerHTML = list.length ? `<span>Total à déposer</span><span style="font-family:'JetBrains Mono',monospace;color:var(--orange)">${fmt(tot)}</span>` : '';
-  document.getElementById('especes-admin').innerHTML = list.length && isAdm
-    ? `<p class="ndf-hint" style="margin:6px 0 8px">Dons déjà déposés avant la mise en place de ce suivi : coche-les, puis clique ci-dessous. Les dons non cochés restent « à déposer ».</p>
-       <button class="btn-primary" style="width:100%;background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="markCashHistorique()">Marquer les dons cochés comme déjà déposés</button>` : '';
+  document.getElementById('especes-admin').innerHTML = isAdm ? `
+    ${list.some(i => i.op) ? `<p class="ndf-hint" style="margin:6px 0 8px">Dons déjà déposés avant la mise en place de ce suivi : coche-les, puis clique ci-dessous. Les dons non cochés restent « à déposer ».</p>
+    <button class="btn-primary" style="width:100%;background:var(--bg3);color:var(--text2);border:1px solid var(--border);margin-bottom:14px" onclick="markCashHistorique()">Marquer les dons cochés comme déjà déposés</button>` : ''}
+    <div class="ndf-section-title" style="margin-top:6px">Reliquat d'un ancien dépôt</div>
+    <p class="ndf-hint">Des pièces ou des billets sont restés dans la caisse lors d'un dépôt déjà marqué comme fait ? Ajoute ce reste ici : il repasse dans « Espèces à déposer ».</p>
+    <div style="display:grid;grid-template-columns:110px 1fr auto;gap:8px">
+      <input type="number" step="0.01" min="0" id="rel-montant" placeholder="Montant €"/>
+      <input type="text" id="rel-note" placeholder="ex : pièces du dépôt du 18/08"/>
+      <button class="btn-primary" onclick="addCashReliquat()">Ajouter</button>
+    </div>` : '';
   document.getElementById('modal-especes').classList.add('open');
 };
 
 window.markCashHistorique = async () => {
   const ids = Array.from(document.querySelectorAll('#especes-list .hist-cb:checked')).map(c => c.value);
-  const list = cashPending().filter(o => ids.includes(o.id));
+  const list = cashPending().filter(i => i.op && ids.includes(i.id));
   if (!list.length) { showToast('Coche d\'abord les dons déjà déposés', 'error'); return; }
-  if (!confirm(`Marquer ${list.length} don(s) en espèces (${fmt(list.reduce((s, o) => s + (o.montant || 0), 0))}) comme déjà déposés à la banque ?`)) return;
+  if (!confirm(`Marquer ${list.length} don(s) en espèces (${fmt(list.reduce((s, i) => s + i.amount, 0))}) comme déjà déposés à la banque ?`)) return;
   try {
-    for (const op of list) await updateDoc(doc(db, 'operations', op.id), { depotId: 'historique' });
+    for (const i of list) await updateDoc(doc(db, 'operations', i.id), { depotId: 'historique' });
     await logAudit('cash_historique', `${list.length} dons en espèces marqués comme déjà déposés (avant suivi)`);
     closeModal('modal-especes');
     showToast('✓ Dons marqués comme déjà déposés', 'success');
+  } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
+};
+
+window.addCashReliquat = async () => {
+  const montant = Math.round(parseFloat(String(document.getElementById('rel-montant').value).replace(',', '.')) * 100) / 100;
+  const note = document.getElementById('rel-note').value.trim();
+  if (!montant || montant <= 0) { showToast('Montant du reliquat invalide', 'error'); return; }
+  try {
+    const next = [...cashReliquats, { montant, date: new Date().toISOString().split('T')[0], note: note || null }];
+    await setDoc(doc(db, 'config', 'especes'), { reliquats: next }, { merge: true });
+    await logAudit('cash_reliquat', `Reliquat d'espèces ajouté : ${montant}€${note ? ' — ' + note : ''}`);
+    cashReliquats = next; _cashCache = null;
+    renderDashboard();
+    openEspeces();
+    showToast('✓ Reliquat ajouté aux espèces à déposer', 'success');
+  } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
+};
+
+window.removeCashReliquat = async (idx) => {
+  const r = cashReliquats[idx];
+  if (!r || !confirm(`Supprimer le reliquat de ${fmt(r.montant)} ?`)) return;
+  try {
+    const next = cashReliquats.filter((_, i) => i !== idx);
+    await setDoc(doc(db, 'config', 'especes'), { reliquats: next }, { merge: true });
+    await logAudit('cash_reliquat_suppr', `Reliquat d'espèces supprimé : ${r.montant}€`);
+    cashReliquats = next; _cashCache = null;
+    renderDashboard();
+    openEspeces();
   } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
 };
 
@@ -1965,11 +2036,11 @@ function renderDashboard() {
   });
 
   const pending = cashPending();
-  const pendingTot = pending.reduce((s, o) => s + (o.montant || 0), 0);
+  const pendingTot = cashPendingTotal();
   caisse -= pendingTot;
   document.getElementById('solde-caisse').textContent = fmt(caisse);
   document.getElementById('solde-especes').textContent = fmt(pendingTot);
-  document.getElementById('solde-especes-count').textContent = pending.length ? pending.length + ' don' + (pending.length > 1 ? 's' : '') + ' · cliquer pour déposer' : 'Tout est déposé';
+  document.getElementById('solde-especes-count').textContent = pending.length ? pending.length + ' montant' + (pending.length > 1 ? 's' : '') + ' en attente · cliquer pour déposer' : 'Tout est déposé';
   document.getElementById('solde-entrees').textContent = '+' + fmt(entreesMois);
   document.getElementById('solde-sorties').textContent = '-' + fmt(sortiesMois);
   document.getElementById('solde-entrees-count').textContent = nbEntrees + ' opération' + (nbEntrees > 1 ? 's' : '');
@@ -2669,6 +2740,7 @@ async function logAudit(type, action) {
 
 // ── MODAL ──
 window.openModal = (type) => {
+  depotEditId = null;
   setType(type);
   document.getElementById('op-montant').value = '';
   document.getElementById('op-desc').value = '';
@@ -2710,6 +2782,7 @@ window.openModal = (type) => {
   if (document.getElementById('depot-notes')) document.getElementById('depot-notes').value = '';
   if (document.getElementById('depot-date')) document.getElementById('depot-date').value = new Date().toISOString().split('T')[0];
   if (type === 'depot') updateDepotCashTotal();
+  depotEditId = null;
   document.getElementById('op-date').style.display = 'block';
   document.getElementById('op-date-mois-input').style.display = 'none';
   populateSelects(); // Rafraîchit les listes soirées/lieux à chaque ouverture
@@ -2736,7 +2809,7 @@ window.setType = (type) => {
   document.getElementById('helloasso-form').style.display = isHA ? 'block' : 'none';
   const depotFormEl = document.getElementById('depot-form');
   if (depotFormEl) depotFormEl.style.display = isDepot ? 'block' : 'none';
-  if (isDepot) { depotCashSel = new Set(cashPending().map(o => o.id)); renderDepotCashList(); }
+  if (isDepot && !depotEditId) { depotCashTouched = false; depotCashSel = new Set(cashPending().map(o => o.id)); renderDepotCashList(); }
 
   // Bouton submit
   const submitType = (isHA || isDepot) ? 'entree' : type;
@@ -3005,7 +3078,8 @@ async function submitDepot() {
       date: new Date(date),
       categorie: 'Dépôt bancaire',
       virementPar: par || null,
-      donsIds: cashPending().filter(o => depotCashSel.has(o.id)).map(o => o.id),
+      donsIds: depotPendingList().filter(i => depotCashSel.has(i.id) && i.op).map(i => i.id),
+      suiviEspeces: depotPendingList().some(i => depotCashSel.has(i.id)),
       notes: notes || null,
       auteur: currentUser.email,
       auteurNom: ORG_NAME,
@@ -3039,6 +3113,23 @@ async function submitDepot() {
       }
     }
 
+    if (depotEditId) {
+      const cur = allOps.find(o => o.id === depotEditId) || {};
+      const upd = {
+        montant: opData.montant, description: opData.description, date: opData.date, virementPar: opData.virementPar,
+        donsIds: opData.donsIds, suiviEspeces: opData.suiviEspeces, notes: opData.notes, updatedAt: serverTimestamp(),
+      };
+      if (opData.driveFiles && opData.driveFiles.length) {
+        const files = [...(cur.driveFiles || []), ...opData.driveFiles];
+        Object.assign(upd, { driveFiles: files, driveFileId: files[0].fileId, driveLink: files[0].link, driveFileName: files[0].name });
+      }
+      await updateDoc(doc(db, 'operations', depotEditId), upd);
+      await logAudit('edit_operation', `Dépôt bancaire modifié : ${cur.montant}€ → ${montant}€`);
+      depotEditId = null; editingOpId = null;
+      closeModal('modal-op');
+      showToast('✓ Dépôt modifié', 'success');
+      return;
+    }
     await addDoc(collection(db, 'operations'), opData);
     await logAudit('add_operation', `Dépôt bancaire ${montant}€${par ? ' par ' + par : ''}${opData.donsIds.length ? ' — ' + opData.donsIds.length + ' don(s) en espèces inclus' : ''}`);
     closeModal('modal-op');
@@ -3275,7 +3366,7 @@ window.showDetail = (id) => {
     ${!op.helloasso && op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val" style="color:var(--red)">❌ Soirée annulée</span></div>` : ''}
     ${op.pasDeDon && !op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
     ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
-    ${isCashDon(op) ? (() => { const dep = cashDepositMap()[op.id]; return `<div class="detail-row"><span class="detail-key">Dépôt banque</span><span class="detail-val">${dep ? `🏛️ Déposé le ${opDate(dep).toLocaleDateString('fr-FR')} <a href="#" style="color:var(--accent)" onclick="event.preventDefault();showDetail('${dep.id}')">voir le dépôt</a>` : op.depotId === 'historique' ? '🏛️ Déjà déposé (avant le suivi)' : '<span style="color:var(--orange)">🪙 En attente de dépôt</span>'}</span></div>`; })() : ''}
+    ${isCashDon(op) ? (() => { const dep = cashDepositMap()[op.id]; const it = cashItems().find(i => i.id === op.id); const st = op.depotId === 'historique' ? '🏛️ Déjà déposé (avant le suivi)' : !it || it.remaining <= 0.004 ? '🏛️ Déposé' + (dep ? ` le ${opDate(dep).toLocaleDateString('fr-FR')} <a href="#" style="color:var(--accent)" onclick="event.preventDefault();showDetail('${dep.id}')">voir le dépôt</a>` : '') : it.remaining < it.amount - 0.004 ? `<span style="color:var(--orange)">🪙 Déposé en partie — reste ${fmt(it.remaining)} à déposer</span>` : '<span style="color:var(--orange)">🪙 En attente de dépôt</span>'; return `<div class="detail-row"><span class="detail-key">Dépôt banque</span><span class="detail-val">${st}</span></div>`; })() : ''}
     ${op.type === 'depot' && op.donsIds?.length ? `<div class="detail-row"><span class="detail-key">Dons inclus</span><span class="detail-val">${op.donsIds.length} don${op.donsIds.length > 1 ? 's' : ''} en espèces · ${fmt(allOps.filter(o => op.donsIds.includes(o.id)).reduce((s, o) => s + (o.montant || 0), 0))}</span></div>` : ''}
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''}
@@ -3346,7 +3437,28 @@ window.openEditModal = (id) => {
   closeModal('modal-detail');
 
   const d = op.date?.toDate ? op.date.toDate() : new Date(op.date);
+  depotEditId = op.type === 'depot' ? id : null;
   setType(op.type);
+  if (op.type === 'depot') {
+    document.getElementById('depot-montant').value = op.montant || '';
+    document.getElementById('depot-date').value = d.toISOString().split('T')[0];
+    document.getElementById('depot-par').value = op.virementPar || '';
+    document.getElementById('depot-notes').value = op.notes || '';
+    selectedFiles = [];
+    const fl = document.getElementById('files-list-depot');
+    if (fl) fl.innerHTML = (op.driveFiles || []).map(f => `<div class="upload-preview"><span>📎</span><span class="upload-preview-name">${escHTML(f.name || 'Justificatif')}</span><span style="font-size:11px;color:var(--text3)">déjà joint</span></div>`).join('');
+    const avail = new Set(depotPendingList().map(i => i.id));
+    depotCashTouched = false;
+    depotCashSel = new Set((op.donsIds || []).filter(x => avail.has(x)));
+    // reliquats et restes consommés par ce dépôt : on les recoche s'ils ne sont plus en attente sans lui
+    const withoutThis = depotPendingList(), withThis = cashPending();
+    withoutThis.forEach(i => { const now = withThis.find(w => w.id === i.id); if (!now || now.remaining < i.remaining - 0.004) depotCashSel.add(i.id); });
+    renderDepotCashList();
+    document.getElementById('modal-title').textContent = '✏️ Modifier le dépôt';
+    document.getElementById('submit-btn').textContent = '💾 Enregistrer les modifications';
+    document.getElementById('modal-op').classList.add('open');
+    return;
+  }
   document.getElementById('op-montant').value = op.montant || 0;
   document.getElementById('op-montant').disabled = op.pasDeDon || false;
   document.getElementById('op-date').value = d.toISOString().split('T')[0];
@@ -4503,7 +4615,7 @@ function opItemHTML(op) {
     <div class="op-item" onclick="showDetail('${op.id}')">
       <div class="op-dot ${op.type}"></div>
       <div class="op-info">
-        <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}${isCashDon(op) && !op.depotId && !cashDepositMap()[op.id] ? '<span class="badge-cash">à déposer</span>' : ''}</div>
+        <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}${isCashDon(op) && op.depotId !== 'historique' && (cashItems().find(i => i.id === op.id)?.remaining || 0) > 0.004 ? '<span class="badge-cash">à déposer</span>' : ''}</div>
         <div class="op-meta">${subLabel} · ${ORG_NAME}</div>
       </div>
       ${(op.driveFiles?.length > 0 || op.driveLink) ? `<span class="op-attach">📎${op.driveFiles?.length > 1 ? op.driveFiles.length : ''}</span>` : ''}

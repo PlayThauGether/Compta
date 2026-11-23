@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
   if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -248,6 +249,10 @@
   .cash-row span { flex: 1; color: var(--text2); }
   .cash-row b { font-family: 'JetBrains Mono', monospace; color: var(--text); }
   .cash-actions { font-size: 12px; margin: 4px 0 6px; }
+  .bk-progress { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; }
+  .bk-msg { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
+  .bk-bar { height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; }
+  .bk-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
   .pieces-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
   .piece { display: flex; flex-direction: column; gap: 6px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; text-decoration: none; color: var(--text2); font-size: 12px; }
   .piece img { width: 100%; height: 200px; object-fit: contain; background: #fff; border-radius: 6px; }
@@ -1221,6 +1226,23 @@
         <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Configurez vos opérations mensuelles et enregistrez-les en un clic.</p>
         <div id="recurrentes-list" style="margin-bottom:12px"></div>
         <button class="btn-primary" style="width:100%" onclick="openModalRecurrente()">+ Ajouter une opération récurrente</button>
+      </div>
+
+      <div class="card" id="bk-card">
+        <div class="card-title">💾 Sauvegarde</div>
+        <p class="ndf-hint" style="margin-bottom:12px">Une copie de tout, à garder ailleurs (Drive de l'asso, disque dur…) au cas où Firebase ou Cloudinary auraient un problème. Conseil : une sauvegarde complète chaque mois et avant chaque AG.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn-primary" onclick="bkExportComplet()">💾 Sauvegarde complète (données + justificatifs)</button>
+          <button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)" onclick="bkExportJustificatifs()">📎 Télécharger tous les justificatifs</button>
+          <button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="bkExportJSON()">🗂️ Données seules (rapide)</button>
+        </div>
+        <div class="ndf-muted" id="bk-last" style="margin-bottom:10px"></div>
+        <div id="bk-progress" class="bk-progress" style="display:none"><div class="bk-msg"></div><div class="bk-bar"><div></div></div></div>
+        <div class="ndf-section-title">Restaurer une sauvegarde</div>
+        <p class="ndf-hint">Choisis un fichier de sauvegarde (ZIP complet ou JSON). Par défaut, seules les données absentes de l'appli sont remises : rien n'est écrasé.</p>
+        <input type="file" id="bk-restore-file" accept=".zip,.json,application/zip,application/json" onchange="bkPickRestore(event)" style="display:none"/>
+        <button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);margin-bottom:10px" onclick="document.getElementById('bk-restore-file').click()">📂 Choisir un fichier de sauvegarde</button>
+        <div id="bk-restore-preview"></div>
       </div>
 
       <div class="card">
@@ -4672,6 +4694,7 @@ window.showPage = (page) => {
   if (page === 'admin' && currentUserData?.role === 'admin') {
     loadMembers();
     loadAudit();
+    bkShowLast();
     renderConfigTags();
     loadRecurrentes();
     // Remplir le profil
@@ -5496,6 +5519,284 @@ ${list.flatMap(g => g.notes.map(n => `<tr><td>${escHTML(g.nom)}</td><td>${ndfDat
   const w = window.open('', '_blank');
   if (!w) { showToast('Autorise les fenêtres pop-up pour imprimer', 'error'); return; }
   w.document.open(); w.document.write(html); w.document.close();
+};
+
+// ══════════════════════════════════════════════════════════════
+// ── SAUVEGARDE / EXPORT / RESTAURATION (admin) ──
+// ══════════════════════════════════════════════════════════════
+const BK_COLLECTIONS = ['operations', 'notesFrais', 'members', 'config', 'audit'];
+
+function bkProgress(msg, pct) {
+  const el = document.getElementById('bk-progress');
+  if (!el) return;
+  el.style.display = 'block';
+  el.querySelector('.bk-msg').textContent = msg;
+  el.querySelector('.bk-bar > div').style.width = (pct == null ? 0 : Math.max(0, Math.min(100, pct))) + '%';
+}
+function bkDone(msg) { bkProgress(msg, 100); }
+
+// Valeurs Firestore → JSON (dates conservées)
+function bkSerialize(v) {
+  if (v === null || v === undefined) return v ?? null;
+  if (typeof v?.toDate === 'function') return { __date: v.toDate().toISOString() };
+  if (v instanceof Date) return { __date: v.toISOString() };
+  if (Array.isArray(v)) return v.map(bkSerialize);
+  if (typeof v === 'object') { const o = {}; for (const k in v) o[k] = bkSerialize(v[k]); return o; }
+  return v;
+}
+function bkDeserialize(v, urlMap) {
+  if (v === null || v === undefined) return v ?? null;
+  if (Array.isArray(v)) return v.map(x => bkDeserialize(x, urlMap));
+  if (typeof v === 'object') {
+    if (Object.keys(v).length === 1 && typeof v.__date === 'string') return new Date(v.__date);
+    const o = {}; for (const k in v) o[k] = bkDeserialize(v[k], urlMap); return o;
+  }
+  if (typeof v === 'string' && urlMap && urlMap[v]) return urlMap[v];
+  return v;
+}
+
+async function bkReadAll() {
+  const data = {};
+  for (const c of BK_COLLECTIONS) {
+    try {
+      const snap = await getDocs(collection(db, c));
+      data[c] = {};
+      snap.forEach(d => { data[c][d.id] = bkSerialize(d.data()); });
+    } catch (e) { console.warn('lecture', c, e); data[c] = null; }
+  }
+  return data;
+}
+
+const bkSafe = (s, max = 60) => String(s || '').normalize('NFC').replace(/[\\/:*?"<>|\n\r\t]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, max).replace(/[ .]+$/, '') || 'sans-nom';
+const bkExt = (name, url) => { const m = String(name || '').match(/\.[a-z0-9]{2,5}$/i) || String(url || '').split('?')[0].match(/\.[a-z0-9]{2,5}$/i); return m ? m[0].toLowerCase() : '.jpg'; };
+const bkYMD = d => { const x = d?.toDate ? d.toDate() : new Date(d); return isNaN(x) ? 'sans-date' : `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const bkEur = v => (Number(v) || 0).toFixed(2).replace('.', ',');
+
+// Liste de tous les justificatifs, avec un chemin lisible dans le ZIP
+function bkFileList() {
+  const list = [];
+  const typeLbl = { entree: 'Entree', sortie: 'Sortie', virement: 'Virement', depot: 'Depot', helloasso: 'HelloAsso' };
+  allOps.forEach(op => {
+    const files = (op.driveFiles && op.driveFiles.length) ? op.driveFiles : (op.driveLink ? [{ link: op.driveLink, name: op.driveFileName }] : []);
+    if (!files.length) return;
+    const exo = 'Exercice_' + exerciceLabel(exerciceOf(op));
+    const lib = op.helloasso ? 'HelloAsso' : (op.type === 'entree' && (op.typeSoiree || op.lieu)) ? [op.typeSoiree, op.lieu].filter(Boolean).join(' ') : (op.description || op.categorie || '');
+    const folder = `Justificatifs/${exo}/${bkYMD(op.date)}_${typeLbl[op.type] || op.type}_${bkSafe(lib, 45)}_${bkEur(op.montant)}`;
+    files.forEach((f, i) => f.link && list.push({ url: f.link, path: `${folder}/${i + 1}_${bkSafe((f.name || 'justificatif').replace(/\.[a-z0-9]{2,5}$/i, ''), 50)}${bkExt(f.name, f.link)}`, kind: 'Opération', date: bkYMD(op.date), libelle: lib, montant: op.montant, id: op.id }));
+  });
+  (typeof allNotes !== 'undefined' ? allNotes : []).forEach(n => {
+    const files = n.justificatifs || [];
+    if (!files.length) return;
+    const folder = `Notes_de_frais/${n.dateNote || 'sans-date'}_${bkSafe([n.prenom, n.nom].filter(Boolean).join(' '), 40)}_${bkEur(ndfTotal(n))}`;
+    files.forEach((f, i) => f.link && list.push({ url: f.link, path: `${folder}/${i + 1}_${bkSafe((f.name || 'justificatif').replace(/\.[a-z0-9]{2,5}$/i, ''), 50)}${bkExt(f.name, f.link)}`, kind: 'Note de frais', date: n.dateNote || '', libelle: ndfFullName(n), montant: ndfTotal(n), id: n.id }));
+  });
+  return list;
+}
+
+function bkDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+async function bkBuildZip(withData) {
+  if (typeof JSZip === 'undefined') { showToast('Module ZIP non chargé : recharge la page', 'error'); return null; }
+  const zip = new JSZip();
+  const files = bkFileList();
+  const cache = {}, errors = [];
+  const urlToPath = {};
+  let added = 0;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    bkProgress(`Téléchargement des justificatifs : ${i + 1} / ${files.length}`, (i / Math.max(files.length, 1)) * (withData ? 85 : 95));
+    try {
+      if (!cache[f.url]) {
+        const res = await fetch(f.url, { mode: 'cors' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        cache[f.url] = await res.blob();
+      }
+      zip.file(f.path, cache[f.url]); added++;
+      if (!urlToPath[f.url]) urlToPath[f.url] = f.path;
+    } catch (e) { errors.push(`${f.path} — ${f.url} — ${e.message}`); }
+  }
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  zip.file('index_justificatifs.csv', '﻿' + [['Type', 'Date', 'Libellé', 'Montant (€)', 'Fichier dans le ZIP', 'Lien en ligne'].map(q).join(';'),
+    ...files.map(f => [f.kind, f.date, f.libelle, bkEur(f.montant), f.path, f.url].map(q).join(';'))].join('\n'));
+  if (errors.length) zip.file('_fichiers_non_telecharges.txt', errors.join('\n'));
+  if (withData) {
+    bkProgress('Lecture des données…', 88);
+    const data = await bkReadAll();
+    zip.file('sauvegarde.json', JSON.stringify({
+      app: 'PTG Compta', version: 1, date: new Date().toISOString(), par: currentUser?.email || null,
+      collections: data, fichiers: urlToPath,
+    }, null, 1));
+    zip.file('LISEZ-MOI.txt', [
+      "Sauvegarde complète de PTG Compta (Play Thau'Gether).",
+      '',
+      '- sauvegarde.json : toutes les données (opérations, notes de frais, membres, réglages, journal).',
+      '- Justificatifs/ et Notes_de_frais/ : tous les justificatifs, rangés par exercice et par opération.',
+      '- index_justificatifs.csv : la liste des fichiers, ouvrable dans Excel.',
+      '',
+      'Pour restaurer : Compta > Admin > Sauvegarde > Restaurer, puis choisir ce fichier ZIP.',
+    ].join('\n'));
+  }
+  bkProgress('Création du fichier ZIP…', 96);
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+  return { blob, nbFiles: added, errors };
+}
+
+window.bkExportJustificatifs = async () => {
+  const btns = document.querySelectorAll('#bk-card button'); btns.forEach(b => b.disabled = true);
+  try {
+    const r = await bkBuildZip(false);
+    if (!r) return;
+    bkDownload(r.blob, `PTG_Compta_justificatifs_${bkYMD(new Date())}.zip`);
+    bkDone(`✓ ${r.nbFiles} justificatif(s) téléchargé(s)${r.errors.length ? ` · ${r.errors.length} échec(s), voir _fichiers_non_telecharges.txt dans le ZIP` : ''}`);
+    await logAudit('export_justificatifs', `Export ZIP des justificatifs (${r.nbFiles} fichiers)`);
+  } catch (e) { console.error(e); bkProgress('Erreur : ' + e.message, 0); }
+  finally { btns.forEach(b => b.disabled = false); }
+};
+
+window.bkExportComplet = async () => {
+  const btns = document.querySelectorAll('#bk-card button'); btns.forEach(b => b.disabled = true);
+  try {
+    const r = await bkBuildZip(true);
+    if (!r) return;
+    bkDownload(r.blob, `PTG_Compta_sauvegarde_complete_${bkYMD(new Date())}.zip`);
+    bkDone(`✓ Sauvegarde complète téléchargée : données + ${r.nbFiles} justificatif(s)${r.errors.length ? ` · ${r.errors.length} fichier(s) non récupéré(s)` : ''}`);
+    try { localStorage.setItem('ptg-last-backup', new Date().toISOString()); } catch (e) {}
+    bkShowLast();
+    await logAudit('export_sauvegarde', `Sauvegarde complète (${r.nbFiles} fichiers)`);
+  } catch (e) { console.error(e); bkProgress('Erreur : ' + e.message, 0); }
+  finally { btns.forEach(b => b.disabled = false); }
+};
+
+window.bkExportJSON = async () => {
+  const btns = document.querySelectorAll('#bk-card button'); btns.forEach(b => b.disabled = true);
+  try {
+    bkProgress('Lecture des données…', 30);
+    const data = await bkReadAll();
+    const json = JSON.stringify({ app: 'PTG Compta', version: 1, date: new Date().toISOString(), par: currentUser?.email || null, collections: data, fichiers: {} }, null, 1);
+    bkDownload(new Blob([json], { type: 'application/json' }), `PTG_Compta_donnees_${bkYMD(new Date())}.json`);
+    bkDone('✓ Données téléchargées (sans les justificatifs)');
+    await logAudit('export_donnees', 'Export JSON des données');
+  } catch (e) { console.error(e); bkProgress('Erreur : ' + e.message, 0); }
+  finally { btns.forEach(b => b.disabled = false); }
+};
+
+function bkShowLast() {
+  const el = document.getElementById('bk-last');
+  if (!el) return;
+  let last = null;
+  try { last = localStorage.getItem('ptg-last-backup'); } catch (e) {}
+  el.textContent = last ? 'Dernière sauvegarde complète depuis cet appareil : ' + new Date(last).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Aucune sauvegarde complète faite depuis cet appareil.';
+}
+
+// ── Restauration ──
+let bkRestore = null; // { backup, zip }
+
+window.bkPickRestore = async (ev) => {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  const out = document.getElementById('bk-restore-preview');
+  out.innerHTML = '<p class="ndf-hint">Lecture du fichier…</p>';
+  try {
+    let backup, zip = null;
+    if (/\.zip$/i.test(file.name)) {
+      if (typeof JSZip === 'undefined') throw new Error('module ZIP non chargé');
+      zip = await JSZip.loadAsync(file);
+      const j = zip.file('sauvegarde.json');
+      if (!j) throw new Error('ce ZIP ne contient pas sauvegarde.json (ce n\'est pas une sauvegarde complète)');
+      backup = JSON.parse(await j.async('string'));
+    } else {
+      backup = JSON.parse(await file.text());
+    }
+    if (backup.app !== 'PTG Compta' || !backup.collections) throw new Error('fichier non reconnu');
+    // Comparaison avec la base actuelle
+    const counts = [];
+    for (const c of BK_COLLECTIONS) {
+      const docs = backup.collections[c] || {};
+      let present = new Set();
+      try { const snap = await getDocs(collection(db, c)); snap.forEach(d => present.add(d.id)); } catch (e) {}
+      const ids = Object.keys(docs);
+      counts.push({ c, total: ids.length, missing: ids.filter(id => !present.has(id)).length });
+    }
+    const nbZipFiles = zip ? Object.keys(backup.fichiers || {}).length : 0;
+    bkRestore = { backup, zip };
+    const labels = { operations: 'Opérations', notesFrais: 'Notes de frais', members: 'Membres', config: 'Réglages', audit: "Journal d'audit" };
+    out.innerHTML = `
+      <div class="cash-row" style="cursor:default;display:block">
+        <b style="font-family:inherit">Sauvegarde du ${new Date(backup.date).toLocaleString('fr-FR')}</b>${backup.par ? ` <span class="ndf-muted">par ${escHTML(backup.par)}</span>` : ''}
+        <table class="ins-tbl" style="margin-top:8px"><thead><tr><th>Données</th><th>Dans la sauvegarde</th><th>Absentes de l'appli</th></tr></thead><tbody>
+          ${counts.map(x => `<tr><td>${labels[x.c]}</td><td>${x.total}</td><td style="color:${x.missing ? 'var(--orange)' : 'var(--text3)'}">${x.missing}</td></tr>`).join('')}
+        </tbody></table>
+        <div class="ndf-hint" style="margin-top:6px">${zip ? `Justificatifs inclus dans le ZIP (${nbZipFiles} fichier(s) distinct(s)).` : 'Fichier de données seul (pas de justificatifs).'}</div>
+      </div>
+      <label class="cash-row" style="text-transform:none;letter-spacing:0;font-size:13px;font-weight:400;color:var(--text2);gap:10px"><input type="checkbox" style="width:auto;flex:none" id="bk-opt-overwrite"/><span>Remplacer aussi les données déjà présentes par la version de la sauvegarde (sauf journal d'audit et notes remboursées, verrouillés)</span></label>
+      ${zip ? `<label class="cash-row" style="text-transform:none;letter-spacing:0;font-size:13px;font-weight:400;color:var(--text2);gap:10px"><input type="checkbox" style="width:auto;flex:none" id="bk-opt-reupload"/><span>Renvoyer les justificatifs du ZIP vers Cloudinary et mettre à jour les liens (à cocher seulement si les fichiers en ligne ont été perdus)</span></label>` : ''}
+      <button class="btn-primary" style="width:100%;margin-top:6px" onclick="bkDoRestore()">♻️ Restaurer</button>`;
+  } catch (e) {
+    bkRestore = null;
+    out.innerHTML = `<p class="ndf-hint" style="color:var(--red)">Impossible de lire ce fichier : ${escHTML(e.message)}</p>`;
+  }
+};
+
+window.bkDoRestore = async () => {
+  if (!bkRestore) return;
+  if (currentUserData?.role !== 'admin') { showToast('Restauration réservée aux admins', 'error'); return; }
+  const { backup, zip } = bkRestore;
+  const overwrite = document.getElementById('bk-opt-overwrite')?.checked;
+  const reupload = document.getElementById('bk-opt-reupload')?.checked;
+  if (!confirm(overwrite ? 'Restaurer la sauvegarde EN REMPLAÇANT les données existantes par celles de la sauvegarde ?' : 'Restaurer les données absentes de l\'appli ?')) return;
+  const btns = document.querySelectorAll('#bk-card button'); btns.forEach(b => b.disabled = true);
+  let written = 0, skipped = 0, failed = 0;
+  try {
+    // 1) Renvoi éventuel des justificatifs
+    const urlMap = {};
+    if (zip && reupload) {
+      const entries = Object.entries(backup.fichiers || {});
+      for (let i = 0; i < entries.length; i++) {
+        const [oldUrl, path] = entries[i];
+        bkProgress(`Renvoi des justificatifs : ${i + 1} / ${entries.length}`, (i / Math.max(entries.length, 1)) * 60);
+        try {
+          const f = zip.file(path);
+          if (!f) continue;
+          const blob = await f.async('blob');
+          const fd = new FormData();
+          fd.append('file', new File([blob], path.split('/').pop()));
+          fd.append('upload_preset', CLOUDINARY_PRESET);
+          fd.append('folder', 'ptg-compta/restauration');
+          const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, { method: 'POST', body: fd });
+          if (res.ok) { const d = await res.json(); urlMap[oldUrl] = d.secure_url; }
+        } catch (e) { console.warn('renvoi', path, e); }
+      }
+    }
+    // 2) Écriture des documents
+    const order = ['members', 'config', 'operations', 'notesFrais', 'audit'];
+    let done = 0;
+    const total = order.reduce((s, c) => s + Object.keys(backup.collections[c] || {}).length, 0);
+    for (const c of order) {
+      const docs = backup.collections[c] || {};
+      let present = new Set();
+      try { const snap = await getDocs(collection(db, c)); snap.forEach(d => present.add(d.id)); } catch (e) {}
+      for (const [id, raw] of Object.entries(docs)) {
+        done++;
+        bkProgress(`Restauration : ${done} / ${total}`, (zip && reupload ? 60 : 0) + (done / Math.max(total, 1)) * (zip && reupload ? 40 : 100));
+        const exists = present.has(id);
+        if (exists && (!overwrite || c === 'audit')) { skipped++; continue; }
+        try { await setDoc(doc(db, c, id), bkDeserialize(raw, urlMap)); written++; }
+        catch (e) { console.warn('restauration', c, id, e); failed++; }
+      }
+    }
+    await logAudit('restauration', `Restauration de la sauvegarde du ${new Date(backup.date).toLocaleDateString('fr-FR')} : ${written} écrit(s), ${skipped} déjà présent(s), ${failed} échec(s)${Object.keys(urlMap).length ? ', ' + Object.keys(urlMap).length + ' justificatif(s) renvoyé(s)' : ''}`);
+    bkDone(`✓ Restauration terminée : ${written} élément(s) restauré(s), ${skipped} déjà présent(s)${failed ? `, ${failed} refusé(s)` : ''}${Object.keys(urlMap).length ? `, ${Object.keys(urlMap).length} justificatif(s) renvoyé(s)` : ''}`);
+    showToast('✓ Restauration terminée', 'success');
+    loadCashConfig?.();
+  } catch (e) { console.error(e); bkProgress('Erreur : ' + e.message, 0); }
+  finally { btns.forEach(b => b.disabled = false); }
 };
 
 // Close modals on overlay click

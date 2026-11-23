@@ -237,7 +237,17 @@
   }
 
   /* SOLDE */
-  .solde-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .solde-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 1000px) { .solde-grid { grid-template-columns: repeat(2, 1fr); } }
+  .solde-card.cash-card { cursor: pointer; border-color: var(--orange); transition: transform .15s; }
+  .solde-card.cash-card:hover { transform: translateY(-2px); }
+  .badge-cash { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 700; color: var(--orange); border: 1px solid var(--orange); border-radius: 999px; padding: 1px 7px; vertical-align: 1px; }
+  .cash-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 6px; cursor: pointer; font-size: 13px; }
+  .cash-row input { width: auto; }
+  .cash-row span { flex: 1; color: var(--text2); }
+  .cash-row b { font-family: 'JetBrains Mono', monospace; color: var(--text); }
+  .cash-actions { font-size: 12px; margin: 4px 0 6px; }
+  .cash-actions a { color: var(--accent); }
 
   .solde-card {
     background: var(--card);
@@ -980,7 +990,7 @@
         <div class="solde-card main-card">
           <div class="solde-label">💵 Caisse actuelle</div>
           <div class="solde-amount neutral" id="solde-caisse">—</div>
-          <div class="solde-sub">Argent disponible</div>
+          <div class="solde-sub">Argent disponible (hors espèces à déposer)</div>
         </div>
         <div class="solde-card">
           <div class="solde-label">📈 Entrées (mois)</div>
@@ -991,6 +1001,11 @@
           <div class="solde-label">📉 Sorties (mois)</div>
           <div class="solde-amount negative" id="solde-sorties">—</div>
           <div class="solde-sub" id="solde-sorties-count">— opérations</div>
+        </div>
+        <div class="solde-card cash-card" onclick="openEspeces()" title="Voir les dons en espèces à déposer">
+          <div class="solde-label">🪙 Espèces à déposer</div>
+          <div class="solde-amount" id="solde-especes" style="color:var(--orange)">—</div>
+          <div class="solde-sub" id="solde-especes-count">—</div>
         </div>
       </div>
 
@@ -1523,6 +1538,11 @@
           <input type="date" id="depot-date"/>
         </div>
       </div>
+      <div class="form-group" id="depot-cash-group">
+        <label>Dons en espèces inclus dans ce dépôt</label>
+        <div id="depot-cash-list"></div>
+        <div class="ndf-hint" id="depot-cash-total"></div>
+      </div>
       <div class="form-group">
         <label>Déposé par</label>
         <input type="text" id="depot-par" placeholder="Prénom Nom..."/>
@@ -1686,6 +1706,21 @@
   </div>
 </div>
 
+<!-- MODAL ESPÈCES À DÉPOSER -->
+<div class="modal-overlay" id="modal-especes">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">🪙 Espèces à déposer</div>
+      <button class="modal-close" onclick="closeModal('modal-especes')">✕</button>
+    </div>
+    <p class="ndf-hint" style="margin-bottom:12px">Dons en liquide reçus mais pas encore déposés à la banque. Ils rejoignent la caisse dès que le dépôt est enregistré.</p>
+    <div id="especes-list"></div>
+    <div id="especes-total" style="display:flex;justify-content:space-between;font-weight:700;margin:12px 0 16px;font-size:15px"></div>
+    <button class="btn-submit virement" style="background:var(--purple)" onclick="closeModal('modal-especes');openModal('depot')">🏛️ Enregistrer un dépôt à la banque</button>
+    <div id="especes-admin" style="margin-top:10px"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 
@@ -1841,6 +1876,74 @@ function initApp() {
 }
 
 // ── DASHBOARD ──
+// ── ESPÈCES À DÉPOSER ──
+// Un don en liquide reste « à déposer » tant qu'aucun dépôt ne le contient (champ donsIds du dépôt)
+// et qu'il n'a pas été marqué comme déposé avant la mise en place du suivi (depotId = 'historique').
+function cashDepositMap() {
+  const map = {};
+  allOps.filter(o => o.type === 'depot' && Array.isArray(o.donsIds)).forEach(dep => dep.donsIds.forEach(id => { map[id] = dep; }));
+  return map;
+}
+function isCashDon(op) { return op.type === 'entree' && op.donMode === 'liquide' && !op.helloasso && !op.soireeAnnulee && (op.montant || 0) > 0; }
+function cashPending() {
+  const map = cashDepositMap();
+  return allOps.filter(o => isCashDon(o) && !o.depotId && !map[o.id]).sort((a, b) => opDate(a) - opDate(b));
+}
+let depotCashSel = new Set();
+
+function renderDepotCashList() {
+  const el = document.getElementById('depot-cash-list');
+  if (!el) return;
+  const list = cashPending();
+  if (!list.length) {
+    el.innerHTML = '<p class="ndf-hint" style="margin:0">Aucun don en espèces en attente de dépôt.</p>';
+    document.getElementById('depot-cash-total').textContent = '';
+    return;
+  }
+  el.innerHTML = list.map(op => `<label class="cash-row"><input type="checkbox" ${depotCashSel.has(op.id) ? 'checked' : ''} onchange="toggleDepotCash('${op.id}', this.checked)"/><span>${opDate(op).toLocaleDateString('fr-FR')} — ${escHTML(rptLibelle(op))}</span><b>${fmt(op.montant)}</b></label>`).join('') +
+    `<div class="cash-actions"><a href="#" onclick="event.preventDefault();depotCashAll(true)">Tout cocher</a> · <a href="#" onclick="event.preventDefault();depotCashAll(false)">Tout décocher</a></div>`;
+  updateDepotCashTotal();
+}
+function updateDepotCashTotal() {
+  const sel = cashPending().filter(o => depotCashSel.has(o.id));
+  const t = sel.reduce((s, o) => s + (o.montant || 0), 0);
+  const el = document.getElementById('depot-cash-total');
+  if (!el) return;
+  el.innerHTML = sel.length ? `${sel.length} don${sel.length > 1 ? 's' : ''} coché${sel.length > 1 ? 's' : ''} : <b style="color:var(--text)">${fmt(t)}</b> (montant du dépôt mis à jour)` : 'Aucun don coché : le dépôt ne fera entrer aucun don dans la caisse.';
+  if (sel.length) document.getElementById('depot-montant').value = t.toFixed(2);
+}
+window.toggleDepotCash = (id, on) => { if (on) depotCashSel.add(id); else depotCashSel.delete(id); updateDepotCashTotal(); };
+window.depotCashAll = (on) => { depotCashSel = on ? new Set(cashPending().map(o => o.id)) : new Set(); renderDepotCashList(); };
+
+window.openEspeces = () => {
+  const list = cashPending();
+  const tot = list.reduce((s, o) => s + (o.montant || 0), 0);
+  const isAdm = currentUserData?.role === 'admin';
+  document.getElementById('especes-list').innerHTML = list.length
+    ? list.map(op => isAdm
+        ? `<label class="cash-row"><input type="checkbox" class="hist-cb" value="${op.id}"/><span>${opDate(op).toLocaleDateString('fr-FR')} — ${escHTML(rptLibelle(op))}</span><b>${fmt(op.montant)}</b></label>`
+        : `<div class="cash-row" style="cursor:default"><span>${opDate(op).toLocaleDateString('fr-FR')} — ${escHTML(rptLibelle(op))}</span><b>${fmt(op.montant)}</b></div>`).join('')
+    : '<div class="empty-state" style="padding:20px"><div class="empty-icon">✅</div><p>Tout est déposé</p></div>';
+  document.getElementById('especes-total').innerHTML = list.length ? `<span>Total à déposer</span><span style="font-family:'JetBrains Mono',monospace;color:var(--orange)">${fmt(tot)}</span>` : '';
+  document.getElementById('especes-admin').innerHTML = list.length && isAdm
+    ? `<p class="ndf-hint" style="margin:6px 0 8px">Dons déjà déposés avant la mise en place de ce suivi : coche-les, puis clique ci-dessous. Les dons non cochés restent « à déposer ».</p>
+       <button class="btn-primary" style="width:100%;background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="markCashHistorique()">Marquer les dons cochés comme déjà déposés</button>` : '';
+  document.getElementById('modal-especes').classList.add('open');
+};
+
+window.markCashHistorique = async () => {
+  const ids = Array.from(document.querySelectorAll('#especes-list .hist-cb:checked')).map(c => c.value);
+  const list = cashPending().filter(o => ids.includes(o.id));
+  if (!list.length) { showToast('Coche d\'abord les dons déjà déposés', 'error'); return; }
+  if (!confirm(`Marquer ${list.length} don(s) en espèces (${fmt(list.reduce((s, o) => s + (o.montant || 0), 0))}) comme déjà déposés à la banque ?`)) return;
+  try {
+    for (const op of list) await updateDoc(doc(db, 'operations', op.id), { depotId: 'historique' });
+    await logAudit('cash_historique', `${list.length} dons en espèces marqués comme déjà déposés (avant suivi)`);
+    closeModal('modal-especes');
+    showToast('✓ Dons marqués comme déjà déposés', 'success');
+  } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
+};
+
 function renderDashboard() {
   const now = new Date();
   const thisMonth = now.getMonth();
@@ -1861,7 +1964,12 @@ function renderDashboard() {
     }
   });
 
+  const pending = cashPending();
+  const pendingTot = pending.reduce((s, o) => s + (o.montant || 0), 0);
+  caisse -= pendingTot;
   document.getElementById('solde-caisse').textContent = fmt(caisse);
+  document.getElementById('solde-especes').textContent = fmt(pendingTot);
+  document.getElementById('solde-especes-count').textContent = pending.length ? pending.length + ' don' + (pending.length > 1 ? 's' : '') + ' · cliquer pour déposer' : 'Tout est déposé';
   document.getElementById('solde-entrees').textContent = '+' + fmt(entreesMois);
   document.getElementById('solde-sorties').textContent = '-' + fmt(sortiesMois);
   document.getElementById('solde-entrees-count').textContent = nbEntrees + ' opération' + (nbEntrees > 1 ? 's' : '');
@@ -2601,6 +2709,7 @@ window.openModal = (type) => {
   if (document.getElementById('depot-par')) document.getElementById('depot-par').value = '';
   if (document.getElementById('depot-notes')) document.getElementById('depot-notes').value = '';
   if (document.getElementById('depot-date')) document.getElementById('depot-date').value = new Date().toISOString().split('T')[0];
+  if (type === 'depot') updateDepotCashTotal();
   document.getElementById('op-date').style.display = 'block';
   document.getElementById('op-date-mois-input').style.display = 'none';
   populateSelects(); // Rafraîchit les listes soirées/lieux à chaque ouverture
@@ -2627,6 +2736,7 @@ window.setType = (type) => {
   document.getElementById('helloasso-form').style.display = isHA ? 'block' : 'none';
   const depotFormEl = document.getElementById('depot-form');
   if (depotFormEl) depotFormEl.style.display = isDepot ? 'block' : 'none';
+  if (isDepot) { depotCashSel = new Set(cashPending().map(o => o.id)); renderDepotCashList(); }
 
   // Bouton submit
   const submitType = (isHA || isDepot) ? 'entree' : type;
@@ -2895,6 +3005,7 @@ async function submitDepot() {
       date: new Date(date),
       categorie: 'Dépôt bancaire',
       virementPar: par || null,
+      donsIds: cashPending().filter(o => depotCashSel.has(o.id)).map(o => o.id),
       notes: notes || null,
       auteur: currentUser.email,
       auteurNom: ORG_NAME,
@@ -2929,7 +3040,7 @@ async function submitDepot() {
     }
 
     await addDoc(collection(db, 'operations'), opData);
-    await logAudit('add_operation', `Dépôt bancaire ${montant}€${par ? ' par ' + par : ''}`);
+    await logAudit('add_operation', `Dépôt bancaire ${montant}€${par ? ' par ' + par : ''}${opData.donsIds.length ? ' — ' + opData.donsIds.length + ' don(s) en espèces inclus' : ''}`);
     closeModal('modal-op');
     showToast('🏛️ Dépôt enregistré ✓', 'success');
   } catch(e) {
@@ -3164,6 +3275,8 @@ window.showDetail = (id) => {
     ${!op.helloasso && op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val" style="color:var(--red)">❌ Soirée annulée</span></div>` : ''}
     ${op.pasDeDon && !op.soireeAnnulee ? `<div class="detail-row"><span class="detail-key">Dons</span><span class="detail-val" style="color:var(--orange)">🚫 Pas de dons cette soirée</span></div>` : ''}
     ${op.donMode && !op.pasDeDon ? `<div class="detail-row"><span class="detail-key">Mode de don</span><span class="detail-val">${op.donMode === 'liquide' ? '💵 Liquide' : '🏦 Bancaire'}</span></div>` : ''}
+    ${isCashDon(op) ? (() => { const dep = cashDepositMap()[op.id]; return `<div class="detail-row"><span class="detail-key">Dépôt banque</span><span class="detail-val">${dep ? `🏛️ Déposé le ${opDate(dep).toLocaleDateString('fr-FR')} <a href="#" style="color:var(--accent)" onclick="event.preventDefault();showDetail('${dep.id}')">voir le dépôt</a>` : op.depotId === 'historique' ? '🏛️ Déjà déposé (avant le suivi)' : '<span style="color:var(--orange)">🪙 En attente de dépôt</span>'}</span></div>`; })() : ''}
+    ${op.type === 'depot' && op.donsIds?.length ? `<div class="detail-row"><span class="detail-key">Dons inclus</span><span class="detail-val">${op.donsIds.length} don${op.donsIds.length > 1 ? 's' : ''} en espèces · ${fmt(allOps.filter(o => op.donsIds.includes(o.id)).reduce((s, o) => s + (o.montant || 0), 0))}</span></div>` : ''}
     ${op.donOrigine ? `<div class="detail-row"><span class="detail-key">Origine</span><span class="detail-val">${op.donOrigine}</span></div>` : ''}
     ${op.virementPar ? `<div class="detail-row"><span class="detail-key">Virement par</span><span class="detail-val">${op.virementPar}</span></div>` : ''}
     <div class="detail-row"><span class="detail-key">Enregistré par</span><span class="detail-val">${ORG_NAME}</span></div>
@@ -4390,7 +4503,7 @@ function opItemHTML(op) {
     <div class="op-item" onclick="showDetail('${op.id}')">
       <div class="op-dot ${op.type}"></div>
       <div class="op-info">
-        <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}</div>
+        <div class="op-desc">${mainLabel}${op.soireeAnnulee ? '<span class="badge-annulee">Annulée</span>' : ''}${isCashDon(op) && !op.depotId && !cashDepositMap()[op.id] ? '<span class="badge-cash">à déposer</span>' : ''}</div>
         <div class="op-meta">${subLabel} · ${ORG_NAME}</div>
       </div>
       ${(op.driveFiles?.length > 0 || op.driveLink) ? `<span class="op-attach">📎${op.driveFiles?.length > 1 ? op.driveFiles.length : ''}</span>` : ''}

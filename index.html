@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
   if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -247,6 +248,10 @@
   .cash-row span { flex: 1; color: var(--text2); }
   .cash-row b { font-family: 'JetBrains Mono', monospace; color: var(--text); }
   .cash-actions { font-size: 12px; margin: 4px 0 6px; }
+  .pieces-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .piece { display: flex; flex-direction: column; gap: 6px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; text-decoration: none; color: var(--text2); font-size: 12px; }
+  .piece img { width: 100%; height: 200px; object-fit: contain; background: #fff; border-radius: 6px; }
+  .piece:hover { border-color: var(--accent); }
   .cash-actions a { color: var(--accent); }
 
   .solde-card {
@@ -1703,6 +1708,23 @@
     </div>
     <p class="ndf-hint" style="margin-bottom:16px">La sortie est créée automatiquement dans Compta avec le montant total, les justificatifs et le détail des lignes. La note est ensuite verrouillée.</p>
     <button class="btn-submit sortie" id="ndf-r-btn" onclick="ndfConfirmRembourse()">💸 Confirmer le remboursement</button>
+  </div>
+</div>
+
+<!-- MODAL JUSTIFICATIFS D'UNE NOTE DE FRAIS (ouvert aussi par le QR code) -->
+<div class="modal-overlay" id="modal-pieces">
+  <div class="modal ndf-modal">
+    <div class="modal-header">
+      <div class="modal-title" id="pieces-title">Justificatifs</div>
+      <button class="modal-close" onclick="closeModal('modal-pieces')">✕</button>
+    </div>
+    <div id="pieces-info" class="ndf-hint" style="margin-bottom:12px"></div>
+    <div id="pieces-lines" style="margin-bottom:12px"></div>
+    <div id="pieces-files" class="pieces-grid"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
+      <button class="btn-primary" id="pieces-pdf">📄 Tous les justificatifs en un PDF</button>
+      <button class="btn-primary" id="pieces-open-note" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">🧾 Ouvrir la note</button>
+    </div>
   </div>
 </div>
 
@@ -4697,6 +4719,7 @@ function ndfSubscribe() {
     allNotes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.dateNote || '').localeCompare(a.dateNote || '') || ((b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
     ndfRenderAll();
+    ndfHandleDeepLink();
   }, (err) => {
     console.warn('notesFrais:', err);
     const el = document.getElementById('ndf-list');
@@ -4916,6 +4939,7 @@ window.ndfOpen = (id, regul = false) => {
   // Actions
   const acts = [];
   if (n) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)" onclick="ndfPrint('${n.id}')">🖨️ Imprimer</button>`);
+  if (n) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)" onclick="closeModal('modal-ndf');ndfShowPieces('${n.id}')">📎 Justificatifs (${(n.justificatifs || []).length})</button>`);
   if (n?.statut === 'attente' && isAdm) acts.push(`<button class="btn-primary" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)" onclick="ndfValidate('${n.id}')">✅ Valider</button>`);
   if (n?.statut === 'validee' && isAdm) acts.push(`<button class="btn-primary" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red)" onclick="ndfRembourse('${n.id}')">💸 Marquer remboursée</button>`);
   if (n?.operationId) acts.push(`<button class="btn-primary" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="closeModal('modal-ndf');showDetail('${n.operationId}')">📋 Voir la sortie dans Compta</button>`);
@@ -5138,6 +5162,74 @@ window.ndfDelete = async (id) => {
   } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
 };
 
+// ── Lien QR → justificatifs de la note ──
+const ndfLink = id => `${location.origin}${location.pathname}#ndf=${id}`;
+let ndfDeepLink = (location.hash.match(/ndf=([A-Za-z0-9_-]+)/) || [])[1] || null;
+
+function ndfHandleDeepLink() {
+  if (!ndfDeepLink) return;
+  const id = ndfDeepLink;
+  ndfDeepLink = null;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  if (allNotes.find(x => x.id === id)) { showPage('ndf'); ndfShowPieces(id); }
+  else showToast('Note de frais introuvable', 'error');
+}
+
+window.ndfShowPieces = (id) => {
+  const n = allNotes.find(x => x.id === id);
+  if (!n) return;
+  const files = n.justificatifs || [];
+  document.getElementById('pieces-title').textContent = 'Justificatifs — ' + (ndfFullName(n) || 'note de frais');
+  document.getElementById('pieces-info').innerHTML = `Note du ${ndfDateFR(n.dateNote)} · ${fmt(ndfTotal(n))} · ${(n.lignes || []).length} dépense(s) · ${files.length} fichier(s)${n.nbJustifs ? ' · ' + n.nbJustifs + ' justificatif(s) déclaré(s)' : ''}<br>${ndfBadges(n)}`;
+  document.getElementById('pieces-lines').innerHTML = (n.lignes || []).map(l => `<div class="cash-row" style="cursor:default"><span>${ndfDateFR(l.date)} — ${escHTML(l.magasin || '')}${l.magasin ? ' · ' : ''}${escHTML(l.objet || '')}</span><b>${fmt(ndfNum(l.montant))}</b></div>`).join('');
+  document.getElementById('pieces-files').innerHTML = files.length
+    ? files.map((f, i) => `<a class="piece" href="${f.link}" target="_blank" rel="noopener"><img src="${f.link}" alt="" loading="lazy" onerror="this.style.display='none'"/><span>${escHTML(f.name || 'Justificatif ' + (i + 1))}</span></a>`).join('')
+    : '<p class="ndf-hint">Aucun fichier joint à cette note.</p>';
+  document.getElementById('pieces-pdf').onclick = () => ndfPiecesPDF(id);
+  document.getElementById('pieces-pdf').style.display = files.length ? '' : 'none';
+  document.getElementById('pieces-open-note').onclick = () => { closeModal('modal-pieces'); ndfOpen(id); };
+  document.getElementById('modal-pieces').classList.add('open');
+};
+
+// Un seul PDF : récapitulatif de la note puis chaque justificatif sur sa page
+window.ndfPiecesPDF = (id) => {
+  const n = allNotes.find(x => x.id === id);
+  if (!n) return;
+  const files = n.justificatifs || [];
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Justificatifs — ${escHTML(ndfFullName(n))} — ${ndfDateFR(n.dateNote)}</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; font-size: 10pt; }
+  .head { display: flex; justify-content: space-between; border-bottom: 1.2pt solid #000; padding-bottom: 2mm; }
+  .head b { letter-spacing: .06em; }
+  h1 { font-size: 15pt; margin: 6mm 0 2mm; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4mm; }
+  th, td { border: 0.6pt solid #000; padding: 1.5mm 2mm; text-align: left; font-size: 9pt; }
+  td.r, th.r { text-align: right; white-space: nowrap; }
+  .page { break-before: page; display: flex; flex-direction: column; align-items: center; height: 270mm; }
+  .page .cap { font-size: 9pt; margin-bottom: 3mm; align-self: flex-start; }
+  .page img { max-width: 100%; max-height: 255mm; object-fit: contain; }
+</style></head><body>
+  <div class="head"><b>PLAY THAU'GETHER</b><span>Justificatifs de note de frais</span></div>
+  <h1>${escHTML(ndfFullName(n))} — note du ${ndfDateFR(n.dateNote)}</h1>
+  <div>${escHTML(ndfQualite(n))} · ${NDF_STATUTS[n.statut] || ''}${n.validateurNom ? ' · validée par ' + escHTML(n.validateurNom) : ''}${n.dateRemboursement ? ' · remboursée le ' + ndfDateFR(n.dateRemboursement) : ''}</div>
+  <table><thead><tr><th>Date</th><th>Magasin / site</th><th>Objet</th><th>Événement / usage</th><th class="r">Montant</th></tr></thead><tbody>
+    ${(n.lignes || []).map(l => `<tr><td>${ndfDateFR(l.date)}</td><td>${escHTML(l.magasin || '')}</td><td>${escHTML(l.objet || '')}</td><td>${escHTML(l.usage || '')}</td><td class="r">${fmt(ndfNum(l.montant))}</td></tr>`).join('')}
+    <tr><td colspan="4"><b>Total</b></td><td class="r"><b>${fmt(ndfTotal(n))}</b></td></tr>
+  </tbody></table>
+  <p>${files.length} fichier(s) joint(s), un par page ci-après.</p>
+  ${files.map((f, i) => `<div class="page"><div class="cap">Justificatif ${i + 1}/${files.length} — ${escHTML(f.name || '')}</div><img src="${f.link}" alt=""/></div>`).join('')}
+<script>
+  Promise.all(Array.from(document.images).map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })))
+    .then(() => setTimeout(() => window.print(), 300));
+<\/script>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Autorise les fenêtres pop-up pour générer le PDF', 'error'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+};
+
 // ── Fiche A4 imprimable ──
 window.ndfPrint = (id) => {
   const n = id ? allNotes.find(x => x.id === id) : null;
@@ -5148,6 +5240,15 @@ window.ndfPrint = (id) => {
   const lignes = n?.lignes || [];
   const total = n ? ndfTotal(n) : 0;
   const q = n?.qualite;
+  let qrSvg = '';
+  if (n && typeof qrcode === 'function') {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(ndfLink(n.id));
+      qr.make();
+      qrSvg = qr.createSvgTag({ cellSize: 4, margin: 8, scalable: true });
+    } catch (err) { console.warn('QR', err); }
+  }
 
   const rows = Array.from({ length: NDF_MAX_LINES }, (_, i) => {
     const l = lignes[i];
@@ -5194,12 +5295,18 @@ window.ndfPrint = (id) => {
   td.tot-v { border: 1.2pt solid #000; font-weight: bold; text-align: right; padding-right: 1.4mm; white-space: nowrap; }
   .justifs { margin: 3mm 0 3.5mm; display: flex; gap: 2mm; align-items: flex-end; white-space: nowrap; }
   .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
-  .sig { border: 0.8pt solid #000; padding: 2.5mm 3mm; height: 37mm; display: flex; flex-direction: column; }
+  .sig { border: 0.8pt solid #000; padding: 2.5mm 3mm; height: 35mm; display: flex; flex-direction: column; }
   .sig .t { font-weight: bold; font-size: 9.5pt; letter-spacing: 0.04em; margin-bottom: 1.5mm; }
   .sig .txt { font-size: 8.5pt; margin-bottom: 2.5mm; }
   .sig .ln { display: flex; gap: 1.5mm; align-items: flex-end; margin-bottom: 2mm; white-space: nowrap; font-size: 9pt; }
   .sig .ln .fld { flex: 1; }
   .treso { margin-top: 3.5mm; border: 1.2pt solid #000; padding: 2.5mm 3mm; display: flex; align-items: flex-end; gap: 7mm; white-space: nowrap; }
+  .bottom { display: flex; gap: 4mm; align-items: stretch; margin-top: 3.5mm; }
+  .bottom-l { flex: 1; min-width: 0; }
+  .bottom .treso { margin-top: 0; gap: 3mm; font-size: 9pt; padding: 2.2mm 2.5mm; }
+  .qr { width: 21mm; flex: 0 0 21mm; text-align: center; display: flex; flex-direction: column; justify-content: flex-start; }
+  .qr svg { width: 19mm; height: 19mm; display: block; margin: 0 auto; }
+  .qr .cap { font-size: 6pt; line-height: 1.1; margin-top: 0.4mm; }
   .treso .t { font-weight: bold; letter-spacing: 0.06em; }
   .treso > div { display: flex; gap: 1.5mm; align-items: flex-end; }
   .foot { margin-top: 3.5mm; font-size: 8.5pt; }
@@ -5257,16 +5364,21 @@ window.ndfPrint = (id) => {
     </div>
   </div>
 
-  <div class="treso">
-    <span class="t">TRÉSORERIE</span>
-    <div>Viré le ${virHTML}</div>
-    <div>Montant : ${fld(n?.statut === 'remboursee' ? amt(total) : '', 22)} €</div>
-    <div>${cb(!!n?.saisiCompta)}Saisi dans Compta</div>
-  </div>
+  <div class="${qrSvg ? 'bottom' : ''}">
+    <div class="${qrSvg ? 'bottom-l' : ''}">
+      <div class="treso">
+        <span class="t">TRÉSORERIE</span>
+        <div>Viré le ${virHTML}</div>
+        <div>Montant : ${fld(n?.statut === 'remboursee' ? amt(total) : '', qrSvg ? 15 : 22)} €</div>
+        <div>${cb(!!n?.saisiCompta)}Saisi dans Compta</div>
+      </div>
 
-  <div class="foot">
-    <b>Tous les justificatifs papier sont numérisés et ajoutés à l'opération dans Compta.</b>
-    Note à classer avec ses justificatifs (rubrique Factures et tickets). Remboursements listés par bénéficiaire au rapport financier (art. 14 des statuts).
+      <div class="foot">
+        <b>Tous les justificatifs papier sont numérisés et ajoutés à l'opération dans Compta.</b>
+        Note à classer avec ses justificatifs (rubrique Factures et tickets). Remboursements listés par bénéficiaire au rapport financier (art. 14 des statuts).
+      </div>
+    </div>
+    ${qrSvg ? `<div class="qr">${qrSvg}<div class="cap">Justificatifs<br>(accès membres)</div></div>` : ''}
   </div>
 <script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
 </body></html>`;

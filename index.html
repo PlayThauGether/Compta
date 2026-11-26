@@ -699,6 +699,13 @@
   .ligne-item input, .ligne-item select { padding: 8px 10px; font-size: 13px; background: var(--bg2); }
   .ligne-item .ligne-row2 { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .ligne-del { background: none; border: none; color: var(--red); font-size: 18px; cursor: pointer; }
+  .ligne-remise { border-style: dashed; grid-template-columns: 1fr 150px 32px; }
+  .remise-val { display: flex; align-items: center; gap: 4px; }
+  .remise-val > span { color: var(--green); font-weight: 600; }
+  .remise-val input { min-width: 0; flex: 1; }
+  .remise-val select { width: 56px; flex: none; padding: 8px 6px; }
+  .remise-info { grid-column: 1 / -1; font-size: 12px; color: var(--text3); }
+  .remise-info b { color: var(--green); font-weight: 600; }
   .ligne-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
   .ligne-btn { background: var(--bg3); border: 1px dashed var(--border); color: var(--text2); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; cursor: pointer; }
   .stats-period { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
@@ -1546,6 +1553,7 @@
       <div id="lignes-list"></div>
       <div class="ligne-actions">
         <button type="button" class="ligne-btn" onclick="addLigne()">+ Ajouter un article</button>
+        <button type="button" class="ligne-btn" onclick="addRemise()">− Réduction / code promo</button>
         <span id="lignes-total" style="font-size:12px;color:var(--text3)"></span>
       </div>
     </div>
@@ -2195,7 +2203,7 @@ function pcgBreakdown(op) {
   if (op.lignes && op.lignes.some(l => l.categorie)) {
     const acc = {};
     let reste = m;
-    op.lignes.forEach(l => {
+    ventilerRemises(op.lignes).forEach(l => {
       const c = PCG_CAT[l.categorie] || base;
       acc[c] = (acc[c] || 0) + (l.montant || 0);
       reste -= (l.montant || 0);
@@ -2258,14 +2266,59 @@ function formatNotes(txt) {
 const LIGNE_CATS = ['Nourriture/Boisson','Repas bénévoles','Matériel','Fournitures','Lots','Cadeaux','Local','Assurance','Communication','Abonnements','Achats revente','Location matériel','Prestataires','Cotisations versées','Internet téléphone','Site web','Frais postaux','Outils IA','Entretien réparations','Formation','Repas déplacement','Transport','Remboursement','Frais bancaire','Autre sortie'];
 let lignes = [];
 
+const numL = v => parseFloat(String(v ?? '').replace(',', '.')) || 0;
+// Réduction / code promo : en € ou en % du total des articles
+function remiseMontant(l, baseSum) {
+  const v = Math.abs(numL(l.remiseVal));
+  const m = l.remiseType === 'pct' ? baseSum * Math.min(v, 100) / 100 : v;
+  return -Math.round(m * 100) / 100;
+}
+const remiseLabel = l => l.remiseType === 'pct' ? `-${String(numL(l.remiseVal)).replace('.', ',')} %` : 'Réduction';
+function lignesBaseSum(list) { return list.filter(l => !l.remise).reduce((s, l) => s + numL(l.montant), 0); }
+// Répartit chaque réduction au prorata sur les catégories des articles (pour les comptes PCG)
+function ventilerRemises(list) {
+  const rem = (list || []).filter(l => l.remise);
+  if (!rem.length) return list || [];
+  const base = list.filter(l => !l.remise);
+  const byCat = {}; let tot = 0;
+  base.forEach(l => { const c = l.categorie || ''; byCat[c] = (byCat[c] || 0) + (l.montant || 0); tot += l.montant || 0; });
+  const out = [...base];
+  const cats = Object.keys(byCat);
+  rem.forEach(r => {
+    if (!tot || !cats.length) { out.push({ ...r }); return; }
+    let left = r.montant || 0;
+    cats.forEach((c, i) => {
+      const part = i === cats.length - 1 ? Math.round(left * 100) / 100 : Math.round((r.montant || 0) * byCat[c] / tot * 100) / 100;
+      left -= part;
+      out.push({ ...r, categorie: c || null, montant: part });
+    });
+  });
+  return out;
+}
+
 function lignesTotal() {
-  return lignes.reduce((s, l) => s + (parseFloat(String(l.montant).replace(',', '.')) || 0), 0);
+  const base = lignesBaseSum(lignes);
+  return lignes.reduce((s, l) => s + (l.remise ? remiseMontant(l, base) : numL(l.montant)), 0);
 }
 
 function renderLignes() {
   const el = document.getElementById('lignes-list');
   if (!el) return;
-  el.innerHTML = lignes.map((l, i) => `
+  const baseSum = lignesBaseSum(lignes);
+  el.innerHTML = lignes.map((l, i) => l.remise ? `
+    <div class="ligne-item ligne-remise">
+      <input type="text" placeholder="Réduction / code promo" value="${escHTML(l.article)}" oninput="updateLigne(${i},'article',this.value)"/>
+      <div class="remise-val">
+        <span>−</span>
+        <input type="number" step="0.01" min="0" placeholder="0" value="${escHTML(l.remiseVal)}" oninput="updateLigne(${i},'remiseVal',this.value)"/>
+        <select onchange="updateLigne(${i},'remiseType',this.value)">
+          <option value="eur" ${l.remiseType !== 'pct' ? 'selected' : ''}>€</option>
+          <option value="pct" ${l.remiseType === 'pct' ? 'selected' : ''}>%</option>
+        </select>
+      </div>
+      <button type="button" class="ligne-del" onclick="removeLigne(${i})" title="Supprimer">✕</button>
+      <div class="remise-info" id="remise-info-${i}">${l.remiseType === 'pct' ? `${String(numL(l.remiseVal)).replace('.', ',')} % de ${fmt(baseSum)} = ` : ''}<b>${fmt(remiseMontant(l, baseSum))}</b> · répartie sur les catégories des articles</div>
+    </div>` : `
     <div class="ligne-item">
       <input type="text" placeholder="Article (ex: Cape rouge -60%)" value="${escHTML(l.article)}" oninput="updateLigne(${i},'article',this.value)"/>
       <input type="number" step="0.01" min="0" placeholder="0,00 €" value="${escHTML(l.montant)}" oninput="updateLigne(${i},'montant',this.value)"/>
@@ -2293,17 +2346,44 @@ function updateLignesTotal() {
     (ecart ? ` · <a href="#" style="color:var(--orange)" onclick="event.preventDefault();useLignesTotal()">mettre ce total comme montant</a>` : ' ✓');
 }
 
-window.addLigne = () => { lignes.push({ article: '', montant: '', categorie: '', usage: '' }); renderLignes(); };
+window.addLigne = () => {
+  const firstRem = lignes.findIndex(l => l.remise);
+  const nl = { article: '', montant: '', categorie: '', usage: '' };
+  if (firstRem >= 0) lignes.splice(firstRem, 0, nl); else lignes.push(nl);
+  renderLignes();
+};
+window.addRemise = () => { lignes.push({ article: 'Code promo', remise: true, remiseType: 'eur', remiseVal: '', montant: 0 }); renderLignes(); };
 window.removeLigne = (i) => { lignes.splice(i, 1); renderLignes(); };
-window.updateLigne = (i, k, v) => { if (lignes[i]) { lignes[i][k] = v; updateLignesTotal(); } };
+window.updateLigne = (i, k, v) => {
+  if (!lignes[i]) return;
+  lignes[i][k] = v;
+  if (k === 'remiseType') { renderLignes(); return; }
+  // Rafraîchit le calcul des réductions sans redessiner (garde le focus)
+  const base = lignesBaseSum(lignes);
+  lignes.forEach((l, j) => {
+    if (!l.remise) return;
+    const info = document.getElementById('remise-info-' + j);
+    if (info) info.innerHTML = `${l.remiseType === 'pct' ? `${String(numL(l.remiseVal)).replace('.', ',')} % de ${fmt(base)} = ` : ''}<b>${fmt(remiseMontant(l, base))}</b> · répartie sur les catégories des articles`;
+  });
+  updateLignesTotal();
+};
 window.useLignesTotal = () => {
   document.getElementById('op-montant').value = lignesTotal().toFixed(2);
   updateLignesTotal();
 };
 
 function cleanLignes() {
+  const base = lignesBaseSum(lignes);
   return lignes
-    .map(l => ({
+    .map(l => l.remise ? ({
+      article: String(l.article || '').trim() || 'Réduction',
+      montant: remiseMontant(l, base),
+      remise: true,
+      remiseType: l.remiseType === 'pct' ? 'pct' : 'eur',
+      remiseVal: Math.abs(numL(l.remiseVal)),
+      categorie: null,
+      usage: null
+    }) : ({
       article: String(l.article || '').trim(),
       montant: parseFloat(String(l.montant).replace(',', '.')) || 0,
       categorie: l.categorie || null,
@@ -2315,8 +2395,9 @@ function cleanLignes() {
 function renderTicketHTML(op) {
   if (!op.lignes || op.lignes.length === 0) return '';
   const groups = {};
-  op.lignes.forEach(l => { const k = l.usage || ''; (groups[k] = groups[k] || []).push(l); });
+  op.lignes.filter(l => !l.remise).forEach(l => { const k = l.usage || ''; (groups[k] = groups[k] || []).push(l); });
   const keys = Object.keys(groups);
+  const rems = op.lignes.filter(l => l.remise);
   const tot = op.lignes.reduce((s, l) => s + (l.montant || 0), 0);
   const ecart = Math.abs(tot - (op.montant || 0)) > 0.005;
   return `<div class="detail-block">
@@ -2326,6 +2407,7 @@ function renderTicketHTML(op) {
       <table class="ticket-table">
         ${groups[k].map(l => `<tr><td>${escHTML(l.article)}</td><td class="cat">${escHTML(l.categorie || '')}</td><td class="amt">${fmt(l.montant || 0)}</td></tr>`).join('')}
       </table>`).join('')}
+    ${rems.length ? `<table class="ticket-table">${rems.map(l => `<tr><td>${escHTML(l.article)}</td><td class="cat">${l.remiseType === 'pct' ? remiseLabel(l) : 'Réduction'}</td><td class="amt" style="color:var(--green)">${fmt(l.montant || 0)}</td></tr>`).join('')}</table>` : ''}
     <div class="ticket-total"><span>Total articles</span><span style="font-family:'JetBrains Mono',monospace;color:${ecart ? 'var(--orange)' : 'var(--text)'}">${fmt(tot)}${ecart ? ' (≠ ' + fmt(op.montant) + ')' : ''}</span></div>
   </div>`;
 }
@@ -2416,7 +2498,7 @@ function renderStats() {
       if (op.lignes && op.lignes.some(l => l.categorie)) {
         // Ticket détaillé : on répartit chaque article dans sa catégorie
         let reste = op.montant;
-        op.lignes.forEach(l => {
+        ventilerRemises(op.lignes).forEach(l => {
           const c = l.categorie || cat;
           catMap[c] = (catMap[c] || 0) + (l.montant || 0);
           reste -= (l.montant || 0);
@@ -3517,7 +3599,7 @@ window.openEditModal = (id) => {
   document.getElementById('op-soiree').value = op.soiree || '';
   document.getElementById('op-notes').value = op.notes || '';
   document.getElementById('op-virement-par').value = op.virementPar || '';
-  lignes = (op.lignes || []).map(l => ({ article: l.article || '', montant: l.montant ?? '', categorie: l.categorie || '', usage: l.usage || '' }));
+  lignes = (op.lignes || []).map(l => l.remise ? ({ article: l.article || '', remise: true, remiseType: l.remiseType === 'pct' ? 'pct' : 'eur', remiseVal: l.remiseVal ?? Math.abs(l.montant || 0), montant: l.montant || 0 }) : ({ article: l.article || '', montant: l.montant ?? '', categorie: l.categorie || '', usage: l.usage || '' }));
   renderLignes();
 
   if (op.type === 'entree') {
@@ -4077,7 +4159,7 @@ function rptJournal(ops, colorOf, totalLabel) {
         <td>${escHTML(op.categorie || '')}</td>
         <td class="code">${b.length > 1 ? '<span class="muted">réparti</span>' : (b[0] ? chip(b[0].code) + b[0].code : '')}</td>
         <td class="amt ${mixed ? (op.type === 'sortie' ? 'neg' : 'pos') : ''}">${signed(op)}</td></tr>` +
-        (b.length > 1 ? b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${rptPlain(x.code)}${op.lignes ? ' : ' + op.lignes.filter(l => (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${chip(x.code)}${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('') : '');
+        (b.length > 1 ? b.map(x => `<tr class="split"><td></td><td colspan="2">↳ ${rptPlain(x.code)}${op.lignes ? ' : ' + op.lignes.filter(l => !l.remise && (PCG_CAT[l.categorie] || PCG_CAT[op.categorie]) === x.code).map(l => escHTML(l.article)).filter(Boolean).join(', ') : ''}</td><td class="code">${chip(x.code)}${x.code}</td><td class="amt">${fmt(x.montant)}</td></tr>`).join('') : '');
     }).join('');
   }).join('');
   return `<table class="tbl"><thead><tr><th style="width:78px">Date</th><th>Libellé</th><th style="width:120px">Catégorie</th><th style="width:78px">Compte</th><th class="amt" style="width:88px">Montant</th></tr></thead>
@@ -4133,7 +4215,7 @@ window.printRecapType = (year, kind) => {
       if (op.lignes && op.lignes.length) {
         const base = PCG_CAT[op.categorie] || (isE ? '758' : '628');
         const acc = {}; let reste = op.montant || 0;
-        op.lignes.forEach(l => { const c = PCG_CAT[l.categorie] || base; (acc[c] = acc[c] || []).push({ a: l.article || 'Article', m: l.montant || 0 }); reste -= (l.montant || 0); });
+        ventilerRemises(op.lignes).forEach(l => { const c = PCG_CAT[l.categorie] || base; (acc[c] = acc[c] || []).push({ a: (l.article || 'Article') + (l.remise ? ' (réduction' + (l.remiseType === 'pct' ? ' ' + remiseLabel(l) : '') + ')' : ''), m: l.montant || 0 }); reste -= (l.montant || 0); });
         if (Math.abs(reste) > 0.005) (acc[base] = acc[base] || []).push({ a: 'Reste du ticket (non détaillé)', m: reste });
         Object.entries(acc).forEach(([c, arts]) => push(c, { d, lib: rptLibelle(op), arts, m: arts.reduce((s, x) => s + x.m, 0) }));
         return;
